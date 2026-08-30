@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --ink:          #0B1220;
+    --panel:        #131B2C;
+    --panel-raised: #182238;
+    --line:         #24304A;
+    --text:         #E7ECF5;
+    --text-muted:   #8792A8;
+    --text-dim:     #5C6883;
+    --accent:       #4C8DFF;
+    --accent-muted: rgba(76,141,255,0.12);
+    --green:        #2FB380;
+    --amber:        #F5A524;
+    --red:          #EF4444;
+
+    /* legacy aliases still referenced by a couple of pages */
+    --bg:      var(--ink);
+    --surface: var(--panel);
+    --border:  var(--line);
+    --muted:   var(--text-muted);
+
+    --font-display: "Space Grotesk", "Inter", sans-serif;
+    --font-body:    "Inter", -apple-system, sans-serif;
+    --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  }
+  .light {
+    --ink:          #F1F3F7;
+    --panel:        #FFFFFF;
+    --panel-raised: #FFFFFF;
+    --line:         #DDE3ED;
+    --text:         #131B2C;
+    --text-muted:   #5B657A;
+    --text-dim:     #93A0B7;
+    --accent:       #2563EB;
+    --accent-muted: rgba(37,99,235,0.1);
+    --green:        #17915E;
+    --amber:        #B4780F;
+    --red:          #DC2626;
+
+    --bg:      var(--ink);
+    --surface: var(--panel);
+    --border:  var(--line);
+    --muted:   var(--text-muted);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font-body), ui-sans-serif, system-ui; }
+  body { background: var(--ink); color: var(--text); min-height: 100vh; }
+  h1, h2, h3, .font-display { font-family: var(--font-display); }
+  .font-mono { font-family: var(--font-mono); }
+  ::-webkit-scrollbar        { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track  { background: transparent; }
+  ::-webkit-scrollbar-thumb  { background: var(--line); border-radius: 3px; }
+}
+
+@layer components {
+  /* flat bordered panel — replaces the old blurred-glass card look */
+  .glass {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+  .stat-value {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+}

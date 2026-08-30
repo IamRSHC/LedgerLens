@@ -1,0 +1,29 @@
+# Core API
+# Note: pinned to versions with prebuilt Windows wheels for Python 3.14 —
+# the original pins predated 3.14 and forced pip to compile pydantic-core
+# from source (requires a working Rust/MSVC toolchain, which failed to link).
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+
+# Data validation
+pydantic==2.13.5
+pydantic-settings==2.15.0
+
+# Database (SQLite for dev, Postgres for prod)
+sqlalchemy==2.0.52
+
+# Utilities
+python-multipart==0.0.32
+httpx==0.28.1
+python-dotenv==1.2.3
+rapidfuzz==3.14.5
+
+# AI
+groq==1.7.0
+
+# Data generation (stdlib only, no pandas needed yet)
+faker==40.37.0
+
+# Add these ONLY when needed and only if your Python version supports them:
+# pandas>=2.2.0        -- Day 2+ (add when we use DataFrame processing)
+# psycopg2-binary      -- Production only (when switching to Supabase Postgres)
