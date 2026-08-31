@@ -408,6 +408,69 @@
     opacity: 0.6;
   }
 
+  /* ═══ Ambient glow blobs ═══ */
+  .glow-blob {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    filter: blur(80px);
+    opacity: 0.5;
+    z-index: 0;
+  }
+  .glow-blob-teal {
+    background: rgba(20,184,166,0.12);
+  }
+  .glow-blob-indigo {
+    background: rgba(99,102,241,0.10);
+  }
+  [data-theme="light"] .glow-blob-teal {
+    background: rgba(13,148,136,0.08);
+  }
+  [data-theme="light"] .glow-blob-indigo {
+    background: rgba(99,102,241,0.06);
+  }
+
+  /* ═══ Timeline rail ═══ */
+  .timeline-row {
+    position: relative;
+    padding-left: 28px;
+  }
+  .timeline-row::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--glass-border);
+  }
+  .timeline-row:last-child::before {
+    display: none;
+  }
+  .timeline-dot {
+    position: absolute;
+    left: 3px;
+    top: 14px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 2px solid;
+    background: var(--bg);
+    z-index: 1;
+  }
+  [data-theme="light"] .timeline-dot {
+    background: #F0F4F8;
+  }
+
+  /* ═══ Tool call pulse ═══ */
+  @keyframes toolPulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+  .tool-running {
+    animation: toolPulse 1.5s ease-in-out infinite;
+  }
+
   /* ═══ Animations ═══ */
   @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(12px); }

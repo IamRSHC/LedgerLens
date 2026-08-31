@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Exception, Investigation, resolveException } from "@/lib/api";
 import { excTypeLabel, fmtDate } from "@/lib/utils";
-import { CheckCircle, Flag, X, Search, Sparkles, ChevronRight, Shield } from "lucide-react";
+import { CheckCircle, Flag, X, Search, Sparkles, ChevronRight, Shield, AlertTriangle, Circle } from "lucide-react";
 
 function SeverityBadge({ severity }: { severity: string }) {
   const cls = severity === "critical" ? "badge-danger"
@@ -35,22 +35,128 @@ function StatusIndicator({ status }: { status: string }) {
   );
 }
 
+function ToolCallRow({ tool, result, isLast }: { tool: string; result: any; isLast: boolean }) {
+  const hasResult = result && typeof result === "object" && Object.keys(result).length > 0;
+  const completed = hasResult || result !== undefined;
+
+  const resultSummary = hasResult
+    ? Object.entries(result).slice(0, 1).map(([k, v]) =>
+        typeof v === "string" ? `${v.slice(0, 40)}${v.length > 40 ? "..." : ""}` : "Data retrieved"
+      )[0]
+    : "Completed";
+
+  return (
+    <div style={{
+      fontSize: 12, display: "flex", alignItems: "flex-start", gap: 8,
+      padding: "8px 10px",
+      background: "var(--glass-surface)", borderRadius: 8,
+      border: "1px solid var(--glass-border)",
+      marginBottom: isLast ? 0 : 6,
+    }}>
+      {completed ? (
+        <CheckCircle size={14} style={{ color: "var(--success)", marginTop: 1, flexShrink: 0 }} />
+      ) : (
+        <Circle size={14} className="tool-running" style={{ color: "var(--accent)", marginTop: 1, flexShrink: 0 }} />
+      )}
+      <div style={{ flex: 1 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text)", fontSize: 12 }}>
+          {tool}()
+        </span>
+        <p style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>
+          {completed ? resultSummary : "Processing..."}
+        </p>
+      </div>
+      {completed && (
+        <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600, marginTop: 2, flexShrink: 0 }}>
+          DONE
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ResolutionPolicy({ inv }: { inv: Investigation }) {
+  const confPct = (inv.confidence * 100).toFixed(0);
+  const riskColor = inv.risk_level === "high" ? "var(--danger)"
+    : inv.risk_level === "medium" ? "var(--warning)" : "var(--success)";
+  const eligible = inv.confidence >= 0.8 && inv.risk_level !== "high";
+
+  return (
+    <div style={{
+      padding: "14px 16px", borderRadius: 10,
+      background: "var(--glass-surface)", border: "1px solid var(--glass-border)",
+      boxShadow: "inset 0 1px 0 var(--glass-highlight)",
+    }}>
+      <p className="label-mono" style={{ marginBottom: 12, letterSpacing: "0.1em" }}>Resolution Policy</p>
+      <div style={{ display: "flex", gap: 24, marginBottom: 12 }}>
+        <div>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>AI confidence</span>
+          <p style={{
+            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 18, marginTop: 2,
+            color: inv.confidence >= 0.8 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
+          }}>
+            {confPct}%
+          </p>
+        </div>
+        <div>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Risk</span>
+          <p style={{
+            fontWeight: 700, fontSize: 18, marginTop: 2,
+            textTransform: "capitalize", color: riskColor,
+          }}>
+            {inv.risk_level}
+          </p>
+        </div>
+      </div>
+      {/* Confidence bar */}
+      <div style={{
+        height: 4, borderRadius: 2, marginBottom: 12,
+        background: "rgba(255,255,255,0.08)", overflow: "hidden",
+      }}>
+        <div style={{
+          height: "100%", borderRadius: 2, width: `${inv.confidence * 100}%`,
+          background: inv.confidence >= 0.8 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
+          transition: "width 0.5s ease",
+        }} />
+      </div>
+      {/* Policy verdict */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 12px", borderRadius: 7,
+        background: eligible ? "var(--success-muted)" : "var(--warning-muted)",
+        border: `1px solid ${eligible ? "rgba(16,185,129,0.20)" : "rgba(245,158,11,0.20)"}`,
+        fontSize: 13, fontWeight: 600,
+        color: eligible ? "var(--success)" : "var(--warning)",
+      }}>
+        {eligible ? (
+          <><CheckCircle size={14} /> Eligible for auto-resolution</>
+        ) : (
+          <><AlertTriangle size={14} /> Human review required</>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => void; onResolved: () => void }) {
   const [resolving, setResolving] = useState(false);
+  const [flagging, setFlagging] = useState(false);
   const inv: Investigation | undefined = exc.investigation;
   let evidence: { label: string; value: string }[] = [];
   try { evidence = inv?.evidence ? JSON.parse(inv.evidence) : []; } catch {}
   let toolCalls: { tool: string; args: object; result: object }[] = [];
   try { toolCalls = inv?.tool_calls ? JSON.parse(inv.tool_calls) : []; } catch {}
 
-  const confColor = inv
-    ? inv.confidence >= 0.8 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)"
-    : "var(--text-muted)";
-
   async function doResolve() {
     setResolving(true);
     try { await resolveException(exc.exception_id, inv?.recommended_action ?? "Manually reviewed"); onResolved(); }
     finally { setResolving(false); }
+  }
+
+  async function doFlag() {
+    setFlagging(true);
+    try { await resolveException(exc.exception_id, "Flagged for manual review"); onResolved(); }
+    finally { setFlagging(false); }
   }
 
   return (
@@ -134,88 +240,29 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
               </div>
               <div style={{
                 display: "flex", alignItems: "center", gap: 6,
-                fontSize: 12, fontWeight: 600, color: confColor,
+                fontSize: 12, fontWeight: 600,
+                color: inv.confidence >= 0.8 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
               }}>
                 <Shield size={13} />
-                {(inv.confidence * 100).toFixed(0)}% confidence
+                {(inv.confidence * 100).toFixed(0)}%
               </div>
             </div>
 
-            {/* Confidence bar */}
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span className="label-mono">Model Confidence</span>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, color: confColor }}>
-                  {(inv.confidence * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div style={{
-                height: 4, borderRadius: 2,
-                background: "rgba(255,255,255,0.08)", overflow: "hidden",
-              }}>
-                <div style={{
-                  height: "100%", borderRadius: 2, width: `${inv.confidence * 100}%`,
-                  background: confColor,
-                  transition: "width 0.5s ease",
-                }} />
-              </div>
-            </div>
-
-            {/* Risk policy */}
-            {inv.risk_level && (
-              <div style={{
-                display: "flex", gap: 16, padding: "10px 14px", borderRadius: 8,
-                background: "var(--glass-surface)", border: "1px solid var(--glass-border)",
-                boxShadow: "inset 0 1px 0 var(--glass-highlight)",
-                fontSize: 12,
-              }}>
-                <div>
-                  <span className="label-mono" style={{ fontSize: 9 }}>Risk</span>
-                  <p style={{
-                    fontWeight: 600, marginTop: 2, textTransform: "capitalize",
-                    color: inv.risk_level === "high" ? "var(--danger)"
-                      : inv.risk_level === "medium" ? "var(--warning)" : "var(--success)",
-                  }}>{inv.risk_level}</p>
-                </div>
-                <div>
-                  <span className="label-mono" style={{ fontSize: 9 }}>Resolution</span>
-                  <p style={{ fontWeight: 600, marginTop: 2, color: "var(--text-secondary)" }}>
-                    {inv.auto_resolved ? "Auto-resolved" : "Human review required"}
-                  </p>
-                </div>
-              </div>
-            )}
+            {/* Resolution Policy block */}
+            <ResolutionPolicy inv={inv} />
 
             <div>
               <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>{inv.root_cause}</p>
               <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7 }}>{inv.explanation}</p>
             </div>
 
-            {/* Tool calls */}
+            {/* Tool calls with running/completed states */}
             {toolCalls.length > 0 && (
               <div>
-                <p className="label-mono" style={{ marginBottom: 8 }}>Tools Used</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {toolCalls.map((t, i) => (
-                    <div key={i} style={{
-                      fontSize: 12, display: "flex", alignItems: "flex-start", gap: 8,
-                      padding: "6px 0",
-                      borderBottom: i < toolCalls.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
-                    }}>
-                      <CheckCircle size={13} style={{ color: "var(--success)", marginTop: 1, flexShrink: 0 }} />
-                      <div>
-                        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text)" }}>
-                          {t.tool}()
-                        </span>
-                        {t.result && typeof t.result === "object" && (
-                          <p style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 1 }}>
-                            {Object.keys(t.result).length > 0 ? "Data retrieved" : "Completed"}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <p className="label-mono" style={{ marginBottom: 8 }}>Agent Tool Calls</p>
+                {toolCalls.map((t, i) => (
+                  <ToolCallRow key={i} tool={t.tool} result={t.result} isLast={i === toolCalls.length - 1} />
+                ))}
               </div>
             )}
 
@@ -260,7 +307,7 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
         {/* Actions */}
         {exc.status === "open" ? (
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={doResolve} disabled={resolving} className="btn-primary" style={{
+            <button onClick={doResolve} disabled={resolving || flagging} className="btn-primary" style={{
               flex: 1, justifyContent: "center", padding: "12px 0",
               background: resolving
                 ? "var(--success)"
@@ -270,9 +317,12 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
               <CheckCircle size={16} />
               {resolving ? "Resolving..." : "Mark Resolved"}
             </button>
-            <button className="btn-ghost" style={{ padding: "12px 18px", color: "var(--danger)" }}>
+            <button onClick={doFlag} disabled={resolving || flagging} className="btn-ghost" style={{
+              padding: "12px 18px", color: "var(--danger)",
+              opacity: flagging ? 0.5 : 1,
+            }}>
               <Flag size={14} />
-              Flag
+              {flagging ? "Flagging..." : "Flag for Review"}
             </button>
           </div>
         ) : (

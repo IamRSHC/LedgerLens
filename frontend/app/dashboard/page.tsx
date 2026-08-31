@@ -125,9 +125,20 @@ export default function Dashboard() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar runId={run?.run_id} runDate={run?.started_at} onRun={runBatch} running={running} />
 
-        <main style={{ flex: 1, padding: 24, display: "flex", flexDirection: "column", gap: 16, overflow: "auto" }}>
+        <main style={{ flex: 1, padding: 24, display: "flex", flexDirection: "column", gap: 16, overflow: "auto", position: "relative" }}>
+          {/* Ambient glow blobs — localized light sources behind major surfaces */}
+          <div className="glow-blob glow-blob-teal" style={{
+            width: 400, height: 400, top: 60, left: "10%",
+          }} />
+          <div className="glow-blob glow-blob-indigo" style={{
+            width: 300, height: 300, top: 200, right: "5%",
+          }} />
+          <div className="glow-blob glow-blob-teal" style={{
+            width: 350, height: 350, bottom: 100, left: "40%",
+          }} />
+
           {loading ? (
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>
               <div style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading...</div>
             </div>
           ) : offline ? (
