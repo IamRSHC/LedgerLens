@@ -9,13 +9,22 @@ export default function Exceptions() {
   const [excs, setExcs] = useState<Exception[]>([]);
   const load = async () => { const r = await getExceptions(); setExcs(r.data); };
   useEffect(() => { load(); }, []);
+
   return (
-    <div className="flex min-h-screen">
+    <div style={{
+      display: "flex", minHeight: "100vh",
+      fontFamily: "var(--font-body)", background: "var(--bg)", color: "var(--text)",
+    }}>
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar />
-        <main className="flex-1 p-6">
-          <h1 className="text-xl font-semibold mb-4">Exception Queue</h1>
+        <main style={{ flex: 1, padding: 24 }}>
+          <h1 style={{
+            fontSize: 20, fontWeight: 600, marginBottom: 16,
+            fontFamily: "var(--font-display)",
+          }}>
+            Exception Queue
+          </h1>
           <ExceptionTable exceptions={excs} onRefresh={load} />
         </main>
       </div>

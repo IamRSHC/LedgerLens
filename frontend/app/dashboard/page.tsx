@@ -6,27 +6,42 @@ import KPICards from "@/components/dashboard/KPICards";
 import Charts from "@/components/dashboard/Charts";
 import ExceptionTable from "@/components/dashboard/ExceptionTable";
 import { getDashboard, getExceptions, getRuns, DashboardStats, Exception, Run } from "@/lib/api";
+import { AlertTriangle, CheckCircle, XCircle, WifiOff, Play } from "lucide-react";
 
 function BackendOffline() {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "var(--panel)", border: "1px solid var(--line)",
-        borderRadius: 16, padding: "40px 48px", textAlign: "center", maxWidth: 440 }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>🔌</div>
-        <h2 style={{ fontWeight: 600, marginBottom: 8, fontSize: 18 }}>Backend not running</h2>
-        <p style={{ color: "#8792A8", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
-          The FastAPI server at <code style={{ color: "#4C8DFF", background: "rgba(76,141,255,0.1)",
-          padding: "1px 6px", borderRadius: 4 }}>localhost:8000</code> isn't reachable.
+      <div className="card" style={{ padding: "40px 48px", textAlign: "center", maxWidth: 440 }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: 12, margin: "0 auto 16px",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "var(--danger-muted)", color: "var(--danger)",
+        }}>
+          <WifiOff size={24} />
+        </div>
+        <h2 style={{ fontWeight: 600, marginBottom: 8, fontSize: 18, fontFamily: "var(--font-display)" }}>
+          Backend not running
+        </h2>
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
+          The FastAPI server at{" "}
+          <code style={{
+            color: "var(--accent)", background: "var(--accent-muted)",
+            padding: "1px 6px", borderRadius: 4, fontFamily: "var(--font-mono)", fontSize: 12,
+          }}>localhost:8000</code>{" "}
+          isn't reachable.
         </p>
-        <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: "14px 18px",
-          textAlign: "left", fontFamily: "monospace", fontSize: 12, color: "#8792A8", lineHeight: 2 }}>
-          <div style={{ color: "#5C6883" }}># In your backend folder:</div>
+        <div style={{
+          background: "var(--bg-elevated)", borderRadius: 10, padding: "14px 18px",
+          textAlign: "left", fontFamily: "var(--font-mono)", fontSize: 12,
+          color: "var(--text-secondary)", lineHeight: 2, border: "1px solid var(--border)",
+        }}>
+          <div style={{ color: "var(--text-muted)" }}># In your backend folder:</div>
           <div>pip install -r requirements.txt</div>
           <div>python data/generate.py</div>
           <div>uvicorn app.main:app --reload</div>
         </div>
-        <p style={{ marginTop: 16, fontSize: 12, color: "#5C6883" }}>
-          Then refresh this page or click "Run New Batch" in the top bar.
+        <p style={{ marginTop: 16, fontSize: 12, color: "var(--text-muted)" }}>
+          Then refresh this page or click "Run Batch" in the top bar.
         </p>
       </div>
     </div>
@@ -36,17 +51,21 @@ function BackendOffline() {
 function NoData({ onRun }: { onRun: () => void }) {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "var(--panel)", border: "1px solid var(--line)",
-        borderRadius: 16, padding: "40px 48px", textAlign: "center" }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>📊</div>
-        <h2 style={{ fontWeight: 600, marginBottom: 8 }}>No batches yet</h2>
-        <p style={{ color: "#8792A8", fontSize: 14, marginBottom: 24 }}>
-          Run your first reconciliation to see the dashboard populate.
+      <div className="card" style={{ padding: "40px 48px", textAlign: "center" }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: 12, margin: "0 auto 16px",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "var(--accent-muted)", color: "var(--accent)",
+        }}>
+          <Play size={24} />
+        </div>
+        <h2 style={{ fontWeight: 600, marginBottom: 8, fontFamily: "var(--font-display)" }}>No batches yet</h2>
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 24 }}>
+          Run your first reconciliation to see the dashboard.
         </p>
-        <button onClick={onRun} style={{ padding: "11px 24px", borderRadius: 10, fontWeight: 600,
-          fontSize: 14, background: "#4C8DFF", color: "#fff",
-          border: "none", cursor: "pointer" }}>
-          Run New Batch →
+        <button onClick={onRun} className="btn-primary" style={{ padding: "12px 24px", fontSize: 14 }}>
+          <Play size={16} />
+          Run First Batch
         </button>
       </div>
     </div>
@@ -71,7 +90,7 @@ export default function Dashboard() {
       setExcs(excsRes.data as Exception[]);
       setRun((runsRes.data as Run[])?.[0] ?? null);
     } catch (e: any) {
-      if (!e?.response) setOffline(true); // network error = backend down
+      if (!e?.response) setOffline(true);
     } finally {
       setLoading(false);
     }
@@ -88,23 +107,23 @@ export default function Dashboard() {
   useEffect(() => { load(); }, [load]);
 
   const healthLabel = !stats ? null
-    : stats.match_rate >= 90 ? { text: "All Clear",    color: "#2FB380", icon: "✓" }
-    : stats.match_rate >= 75 ? { text: "Needs Review", color: "#F5A524", icon: "⚠" }
-    : { text: "Critical",    color: "#EF4444", icon: "✕" };
+    : stats.match_rate >= 90 ? { text: "All Clear",    color: "var(--success)", Icon: CheckCircle }
+    : stats.match_rate >= 75 ? { text: "Needs Review", color: "var(--warning)", Icon: AlertTriangle }
+    : { text: "Critical",    color: "var(--danger)",  Icon: XCircle };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "var(--font-body)",
-      background: "var(--ink)", color: "var(--text)" }}>
+    <div style={{
+      display: "flex", minHeight: "100vh",
+      fontFamily: "var(--font-body)", background: "var(--bg)", color: "var(--text)",
+    }}>
       <Sidebar />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar runId={run?.run_id} runDate={run?.started_at} onRun={runBatch} running={running} />
 
-        <main style={{ flex: 1, padding: 24, display: "flex", flexDirection: "column",
-          gap: 16, overflow: "auto" }}>
-
+        <main style={{ flex: 1, padding: 24, display: "flex", flexDirection: "column", gap: 16, overflow: "auto" }}>
           {loading ? (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ color: "#5C6883", fontSize: 14 }}>Loading…</div>
+              <div style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading...</div>
             </div>
           ) : offline ? (
             <BackendOffline />
@@ -112,25 +131,30 @@ export default function Dashboard() {
             <NoData onRun={runBatch} />
           ) : (
             <>
-              {/* Health banner */}
               {healthLabel && (
-                <div style={{ background: `${healthLabel.color}0f`,
-                  border: `1px solid ${healthLabel.color}30`, borderRadius: 12,
-                  padding: "12px 20px", display: "flex", alignItems: "center",
-                  justifyContent: "space-between" }}>
-                  <p style={{ fontSize: 14, color: "#8792A8" }}>
-                    <span style={{ fontWeight: 600, color: healthLabel.color }}>
-                      {healthLabel.icon} {healthLabel.text}
+                <div className="animate-fade-in" style={{
+                  background: `color-mix(in srgb, ${healthLabel.color} 8%, transparent)`,
+                  border: `1px solid color-mix(in srgb, ${healthLabel.color} 20%, transparent)`,
+                  borderRadius: 12, padding: "12px 20px",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+                    <healthLabel.Icon size={16} style={{ color: healthLabel.color }} />
+                    <span>
+                      <span style={{ fontWeight: 600, color: healthLabel.color }}>{healthLabel.text}</span>
+                      <span style={{ color: "var(--text-secondary)" }}>
+                        {" — "}{run?.run_id} &middot; {stats.total_records} records &middot;{" "}
+                        {stats.exceptions > 0
+                          ? `${stats.exceptions} exceptions require attention`
+                          : "All records reconciled"}
+                      </span>
                     </span>
-                    {" — "}
-                    {run?.run_id} · {stats.total_records} records ·{" "}
-                    {stats.exceptions > 0
-                      ? `${stats.exceptions} exceptions require attention`
-                      : "All records reconciled cleanly 🎉"}
-                  </p>
-                  <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 100,
-                    color: healthLabel.color, border: `1px solid ${healthLabel.color}40`,
-                    background: `${healthLabel.color}12`, fontWeight: 500 }}>
+                  </div>
+                  <span className="badge" style={{
+                    color: healthLabel.color,
+                    borderColor: `color-mix(in srgb, ${healthLabel.color} 30%, transparent)`,
+                    background: `color-mix(in srgb, ${healthLabel.color} 10%, transparent)`,
+                  }}>
                     {healthLabel.text}
                   </span>
                 </div>

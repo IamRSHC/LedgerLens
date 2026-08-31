@@ -3,33 +3,66 @@ import { useEffect, useState } from "react";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { getOrders } from "@/lib/api";
+import { fmtDate } from "@/lib/utils";
 
 export default function Transactions() {
   const [orders, setOrders] = useState<any[]>([]);
   useEffect(() => { getOrders().then(r => setOrders(r.data)); }, []);
+
+  const gridCols = "2fr 1fr 1fr 1fr 1fr";
+
   return (
-    <div className="flex min-h-screen">
+    <div style={{
+      display: "flex", minHeight: "100vh",
+      fontFamily: "var(--font-body)", background: "var(--bg)", color: "var(--text)",
+    }}>
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar />
-        <main className="flex-1 p-6">
-          <h1 className="text-xl font-semibold mb-4">Transactions</h1>
-          <div className="glass">
-            <div className="grid text-xs font-medium uppercase tracking-widest px-4 py-2.5 border-b"
-                 style={{ gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr", borderColor:"var(--border)", color:"var(--muted)" }}>
-              <span>Order ID</span><span>Amount</span><span>Method</span><span>Status</span><span>Date</span>
+        <main style={{ flex: 1, padding: 24 }}>
+          <h1 style={{
+            fontSize: 20, fontWeight: 600, marginBottom: 16,
+            fontFamily: "var(--font-display)",
+          }}>
+            Transactions
+          </h1>
+          <div className="card" style={{ overflow: "hidden" }}>
+            <div style={{
+              display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
+              padding: "10px 20px", borderBottom: "1px solid var(--border)",
+            }}>
+              {["Order ID", "Amount", "Method", "Status", "Date"].map(h => (
+                <span key={h} className="label-mono">{h}</span>
+              ))}
             </div>
-            <div className="divide-y max-h-[75vh] overflow-y-auto" style={{ divideColor:"var(--border)" }}>
+            <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
               {orders.map((o, i) => (
-                <div key={i} className="grid items-center px-4 py-2.5 text-sm hover:bg-white/[0.02]"
-                     style={{ gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr" }}>
-                  <span className="font-mono text-xs">{o.order_id}</span>
-                  <span className="font-medium">₹{o.amount?.toLocaleString("en-IN")}</span>
-                  <span className="text-xs" style={{color:"var(--muted)"}}>{o.payment_method}</span>
-                  <span className="text-xs text-green-400">{o.status}</span>
-                  <span className="text-xs" style={{color:"var(--muted)"}}>{o.created_at?.slice(0,10)}</span>
+                <div key={i} style={{
+                  display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
+                  padding: "10px 20px", fontSize: 13,
+                  borderBottom: "1px solid var(--border)",
+                  transition: "background 0.1s ease",
+                }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "var(--row-hover)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>
+                    {o.order_id}
+                  </span>
+                  <span className="font-mono" style={{ fontWeight: 600, fontSize: 13 }}>
+                    ₹{o.amount?.toLocaleString("en-IN")}
+                  </span>
+                  <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{o.payment_method}</span>
+                  <span className="badge badge-success" style={{ justifySelf: "start" }}>{o.status}</span>
+                  <span style={{ color: "var(--text-muted)", fontSize: 12, fontFamily: "var(--font-mono)" }}>
+                    {o.created_at?.slice(0, 10)}
+                  </span>
                 </div>
               ))}
+              {orders.length === 0 && (
+                <p style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
+                  No transactions yet. Run a batch first.
+                </p>
+              )}
             </div>
           </div>
         </main>
