@@ -13,9 +13,14 @@ const NAV = [
 export default function Sidebar() {
   const path = usePathname();
   return (
-    <aside className="glass" style={{
+    <aside style={{
       width: 232, minHeight: "100vh", display: "flex", flexDirection: "column",
-      padding: "20px 12px", borderRight: "1px solid var(--border)",
+      padding: "20px 12px",
+      background: "var(--glass-surface-floating)",
+      backdropFilter: "blur(28px) saturate(160%)",
+      WebkitBackdropFilter: "blur(28px) saturate(160%)",
+      borderRight: "1px solid var(--glass-border)",
+      boxShadow: "inset -1px 0 0 var(--glass-highlight)",
       position: "sticky", top: 0, zIndex: 20,
     }}>
       <Link href="/" style={{
@@ -23,9 +28,11 @@ export default function Sidebar() {
         padding: "0 10px", marginBottom: 32, textDecoration: "none", color: "inherit",
       }}>
         <div style={{
-          width: 32, height: 32, borderRadius: 8,
-          background: "var(--accent-muted)", border: "1px solid var(--accent-border)",
+          width: 34, height: 34, borderRadius: 10,
+          background: "var(--accent-muted)",
+          border: "1px solid var(--accent-border)",
           display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 0 16px rgba(20,184,166,0.12), inset 0 1px 0 rgba(255,255,255,0.06)",
         }}>
           <Hexagon size={16} style={{ color: "var(--accent)" }} />
         </div>
@@ -48,10 +55,11 @@ export default function Sidebar() {
             <Link key={href} href={href} style={{
               display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
               borderRadius: 8, fontSize: 14, fontWeight: active ? 600 : 400,
-              textDecoration: "none", transition: "all 0.15s ease",
+              textDecoration: "none", transition: "all 0.18s ease",
               background: active ? "var(--accent-muted)" : "transparent",
               color: active ? "var(--accent)" : "var(--text-secondary)",
-              borderLeft: active ? "3px solid var(--accent)" : "3px solid transparent",
+              borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
+              boxShadow: active ? "0 0 12px var(--glow-accent), inset 0 1px 0 rgba(20,184,166,0.06)" : "none",
             }}>
               <Icon size={18} strokeWidth={active ? 2.2 : 1.8} />
               {label}
@@ -61,7 +69,7 @@ export default function Sidebar() {
       </nav>
 
       <div style={{
-        padding: "14px 12px", borderTop: "1px solid var(--border)",
+        padding: "14px 12px", borderTop: "1px solid var(--glass-border)",
         fontSize: 11, color: "var(--text-muted)",
       }}>
         <p style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 2 }}>

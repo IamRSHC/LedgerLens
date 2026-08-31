@@ -11,9 +11,9 @@ export default function Exceptions() {
   useEffect(() => { load(); }, []);
 
   return (
-    <div style={{
+    <div className="page-bg" style={{
       display: "flex", minHeight: "100vh",
-      fontFamily: "var(--font-body)", background: "var(--bg)", color: "var(--text)",
+      fontFamily: "var(--font-body)", color: "var(--text)",
     }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>

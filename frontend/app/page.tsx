@@ -35,13 +35,13 @@ export default function Landing() {
   }
 
   return (
-    <main style={{
+    <main className="page-bg" style={{
       minHeight: "100vh", display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center", padding: "24px",
-      background: "var(--bg)", fontFamily: "var(--font-body)", color: "var(--text)",
+      fontFamily: "var(--font-body)", color: "var(--text)",
       position: "relative",
     }}>
-      {/* Theme toggle — top right */}
+      {/* Theme toggle */}
       {mounted && (
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -50,9 +50,12 @@ export default function Landing() {
             position: "absolute", top: 20, right: 24,
             width: 40, height: 40, borderRadius: 10,
             display: "flex", alignItems: "center", justifyContent: "center",
-            background: "var(--bg-card)", border: "1px solid var(--border)",
+            background: "var(--glass-surface)", border: "1px solid var(--glass-border)",
             color: "var(--text-secondary)", cursor: "pointer",
-            transition: "all 0.15s ease",
+            transition: "all 0.18s ease",
+            boxShadow: "inset 0 1px 0 var(--glass-highlight)",
+            backdropFilter: "var(--glass-blur)",
+            WebkitBackdropFilter: "var(--glass-blur)",
           }}
         >
           {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
@@ -74,14 +77,15 @@ export default function Landing() {
       {/* Logo */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 36 }}>
         <div style={{
-          width: 48, height: 48, borderRadius: 12,
+          width: 52, height: 52, borderRadius: 14,
           display: "flex", alignItems: "center", justifyContent: "center",
           background: "var(--accent-muted)", border: "1px solid var(--accent-border)",
+          boxShadow: "0 0 24px var(--glow-accent), inset 0 1px 0 rgba(255,255,255,0.06)",
         }}>
-          <Hexagon size={22} style={{ color: "var(--accent)" }} />
+          <Hexagon size={24} style={{ color: "var(--accent)" }} />
         </div>
         <span style={{
-          fontSize: 28, fontWeight: 700, letterSpacing: "-0.5px",
+          fontSize: 30, fontWeight: 700, letterSpacing: "-0.5px",
           fontFamily: "var(--font-display)",
         }}>
           LedgerLens
@@ -110,16 +114,20 @@ export default function Landing() {
         Every exception investigated, every decision audited.
       </p>
 
-      {/* Stat strip */}
+      {/* Stat strip — glass surface */}
       <div style={{
-        display: "flex", gap: 2, marginBottom: 48, flexWrap: "wrap", justifyContent: "center",
-        background: "var(--bg-card)", border: "1px solid var(--border)",
-        borderRadius: 14, overflow: "hidden", boxShadow: "var(--shadow-card)",
+        display: "flex", gap: 0, marginBottom: 48, flexWrap: "wrap", justifyContent: "center",
+        background: "var(--glass-surface)",
+        backdropFilter: "var(--glass-blur)",
+        WebkitBackdropFilter: "var(--glass-blur)",
+        border: "1px solid var(--glass-border)",
+        borderRadius: 14, overflow: "hidden",
+        boxShadow: "inset 0 1px 0 var(--glass-highlight), var(--glass-shadow)",
       }}>
         {STATS.map(({ value, label, Icon }, i) => (
           <div key={label} style={{
-            padding: "18px 28px", textAlign: "center", position: "relative",
-            borderRight: i < STATS.length - 1 ? "1px solid var(--border)" : "none",
+            padding: "20px 30px", textAlign: "center", position: "relative",
+            borderRight: i < STATS.length - 1 ? "1px solid var(--glass-border)" : "none",
           }}>
             <div style={{
               fontSize: 24, fontWeight: 700, color: "var(--accent)",
@@ -168,7 +176,6 @@ export default function Landing() {
           {error}
         </div>
       )}
-
     </main>
   );
 }

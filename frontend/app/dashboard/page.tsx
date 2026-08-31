@@ -11,11 +11,12 @@ import { AlertTriangle, CheckCircle, XCircle, WifiOff, Play } from "lucide-react
 function BackendOffline() {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div className="card" style={{ padding: "40px 48px", textAlign: "center", maxWidth: 440 }}>
+      <div className="glass-elevated" style={{ padding: "40px 48px", textAlign: "center", maxWidth: 440 }}>
         <div style={{
           width: 48, height: 48, borderRadius: 12, margin: "0 auto 16px",
           display: "flex", alignItems: "center", justifyContent: "center",
           background: "var(--danger-muted)", color: "var(--danger)",
+          border: "1px solid rgba(239,68,68,0.2)",
         }}>
           <WifiOff size={24} />
         </div>
@@ -31,9 +32,11 @@ function BackendOffline() {
           isn't reachable.
         </p>
         <div style={{
-          background: "var(--bg-elevated)", borderRadius: 10, padding: "14px 18px",
+          background: "var(--glass-surface)", borderRadius: 10, padding: "14px 18px",
           textAlign: "left", fontFamily: "var(--font-mono)", fontSize: 12,
-          color: "var(--text-secondary)", lineHeight: 2, border: "1px solid var(--border)",
+          color: "var(--text-secondary)", lineHeight: 2,
+          border: "1px solid var(--glass-border)",
+          boxShadow: "inset 0 1px 0 var(--glass-highlight)",
         }}>
           <div style={{ color: "var(--text-muted)" }}># In your backend folder:</div>
           <div>pip install -r requirements.txt</div>
@@ -51,11 +54,13 @@ function BackendOffline() {
 function NoData({ onRun }: { onRun: () => void }) {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div className="card" style={{ padding: "40px 48px", textAlign: "center" }}>
+      <div className="glass-elevated" style={{ padding: "40px 48px", textAlign: "center" }}>
         <div style={{
           width: 48, height: 48, borderRadius: 12, margin: "0 auto 16px",
           display: "flex", alignItems: "center", justifyContent: "center",
           background: "var(--accent-muted)", color: "var(--accent)",
+          border: "1px solid var(--accent-border)",
+          boxShadow: "0 0 16px var(--glow-accent)",
         }}>
           <Play size={24} />
         </div>
@@ -112,9 +117,9 @@ export default function Dashboard() {
     : { text: "Critical",    color: "var(--danger)",  Icon: XCircle };
 
   return (
-    <div style={{
+    <div className="page-bg" style={{
       display: "flex", minHeight: "100vh",
-      fontFamily: "var(--font-body)", background: "var(--bg)", color: "var(--text)",
+      fontFamily: "var(--font-body)", color: "var(--text)",
     }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -131,14 +136,24 @@ export default function Dashboard() {
             <NoData onRun={runBatch} />
           ) : (
             <>
+              {/* Health banner — glass alert surface */}
               {healthLabel && (
                 <div className="animate-fade-in" style={{
-                  background: `color-mix(in srgb, ${healthLabel.color} 8%, transparent)`,
-                  border: `1px solid color-mix(in srgb, ${healthLabel.color} 20%, transparent)`,
-                  borderRadius: 12, padding: "12px 20px",
+                  background: "var(--glass-surface)",
+                  backdropFilter: "var(--glass-blur)",
+                  WebkitBackdropFilter: "var(--glass-blur)",
+                  border: `1px solid color-mix(in srgb, ${healthLabel.color} 20%, var(--glass-border))`,
+                  borderRadius: 12, padding: "14px 20px",
                   display: "flex", alignItems: "center", justifyContent: "space-between",
+                  boxShadow: `inset 0 1px 0 var(--glass-highlight), 0 0 24px color-mix(in srgb, ${healthLabel.color} 8%, transparent)`,
+                  position: "relative", overflow: "hidden",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+                  {/* Left accent edge */}
+                  <div style={{
+                    position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
+                    background: healthLabel.color, borderRadius: "12px 0 0 12px",
+                  }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, paddingLeft: 8 }}>
                     <healthLabel.Icon size={16} style={{ color: healthLabel.color }} />
                     <span>
                       <span style={{ fontWeight: 600, color: healthLabel.color }}>{healthLabel.text}</span>

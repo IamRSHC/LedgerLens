@@ -15,16 +15,17 @@ const actorIcon = (a: string) => {
 const actorColor = (a: string) =>
   a === "system" ? "var(--text-muted)" : a === "ai" ? "var(--accent)" : "var(--success)";
 
+const actorBg = (a: string) =>
+  a === "system" ? "rgba(100,116,139,0.08)" : a === "ai" ? "var(--accent-muted)" : "var(--success-muted)";
+
 export default function Audit() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   useEffect(() => { getAuditLogs().then(r => setLogs(r.data)); }, []);
 
-  const gridCols = "160px 100px 120px 1fr";
-
   return (
-    <div style={{
+    <div className="page-bg" style={{
       display: "flex", minHeight: "100vh",
-      fontFamily: "var(--font-body)", background: "var(--bg)", color: "var(--text)",
+      fontFamily: "var(--font-body)", color: "var(--text)",
     }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -37,24 +38,25 @@ export default function Audit() {
             Audit Trail
           </h1>
           <div className="card" style={{ overflow: "hidden" }}>
+            {/* Column headers */}
             <div style={{
-              display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
-              padding: "10px 20px", borderBottom: "1px solid var(--border)",
+              display: "grid", gridTemplateColumns: "160px 100px 120px 1fr",
+              alignItems: "center",
+              padding: "10px 20px", borderBottom: "1px solid var(--glass-border)",
             }}>
               {["Time", "Actor", "Entity", "Action"].map(h => (
                 <span key={h} className="label-mono">{h}</span>
               ))}
             </div>
+            {/* Timeline rows */}
             <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
               {logs.map((l, i) => (
-                <div key={i} style={{
-                  display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
+                <div key={i} className="data-row" style={{
+                  display: "grid", gridTemplateColumns: "160px 100px 120px 1fr",
+                  alignItems: "center",
                   padding: "10px 20px", fontSize: 13,
-                  borderBottom: "1px solid var(--border)",
-                  transition: "background 0.1s ease",
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--row-hover)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                  borderBottom: "1px solid rgba(255,255,255,0.03)",
+                }}>
                   <span style={{
                     color: "var(--text-muted)", fontSize: 12,
                     fontFamily: "var(--font-mono)",
@@ -63,7 +65,11 @@ export default function Audit() {
                   </span>
                   <span style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
-                    color: actorColor(l.actor), fontWeight: 500, fontSize: 12,
+                    color: actorColor(l.actor), fontWeight: 600, fontSize: 11,
+                    padding: "3px 8px", borderRadius: 6,
+                    background: actorBg(l.actor),
+                    width: "fit-content", textTransform: "uppercase",
+                    letterSpacing: "0.04em",
                   }}>
                     {actorIcon(l.actor)}
                     {l.actor}

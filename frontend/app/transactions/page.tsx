@@ -12,9 +12,9 @@ export default function Transactions() {
   const gridCols = "2fr 1fr 1fr 1fr 1fr";
 
   return (
-    <div style={{
+    <div className="page-bg" style={{
       display: "flex", minHeight: "100vh",
-      fontFamily: "var(--font-body)", background: "var(--bg)", color: "var(--text)",
+      fontFamily: "var(--font-body)", color: "var(--text)",
     }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -29,7 +29,7 @@ export default function Transactions() {
           <div className="card" style={{ overflow: "hidden" }}>
             <div style={{
               display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
-              padding: "10px 20px", borderBottom: "1px solid var(--border)",
+              padding: "10px 20px", borderBottom: "1px solid var(--glass-border)",
             }}>
               {["Order ID", "Amount", "Method", "Status", "Date"].map(h => (
                 <span key={h} className="label-mono">{h}</span>
@@ -37,14 +37,11 @@ export default function Transactions() {
             </div>
             <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
               {orders.map((o, i) => (
-                <div key={i} style={{
+                <div key={i} className="data-row" style={{
                   display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
                   padding: "10px 20px", fontSize: 13,
-                  borderBottom: "1px solid var(--border)",
-                  transition: "background 0.1s ease",
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--row-hover)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                  borderBottom: "1px solid rgba(255,255,255,0.03)",
+                }}>
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>
                     {o.order_id}
                   </span>

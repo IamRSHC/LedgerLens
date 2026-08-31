@@ -20,15 +20,24 @@ export default function Topbar({ runId, runDate, onRun, running }: Props) {
     : null;
 
   return (
-    <header className="glass" style={{
+    <header style={{
       height: 56, display: "flex", alignItems: "center",
       justifyContent: "space-between", padding: "0 24px",
-      borderBottom: "1px solid var(--border)",
+      background: "var(--glass-surface-floating)",
+      backdropFilter: "blur(28px) saturate(160%)",
+      WebkitBackdropFilter: "blur(28px) saturate(160%)",
+      borderBottom: "1px solid var(--glass-border)",
+      boxShadow: "inset 0 -1px 0 var(--glass-highlight), 0 4px 20px rgba(0,0,0,0.10)",
       position: "sticky", top: 0, zIndex: 10,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
         {runId && (
-          <span className="badge badge-accent" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+          <span style={{
+            fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600,
+            padding: "4px 10px", borderRadius: 7,
+            background: "var(--accent-muted)", color: "var(--accent)",
+            border: "1px solid var(--accent-border)",
+          }}>
             {runId}
           </span>
         )}
@@ -45,11 +54,12 @@ export default function Topbar({ runId, runDate, onRun, running }: Props) {
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             aria-label="Toggle theme"
             style={{
-              width: 36, height: 36, borderRadius: 8,
+              width: 36, height: 36, borderRadius: 9,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "transparent", border: "1px solid var(--border)",
+              background: "var(--glass-surface)", border: "1px solid var(--glass-border)",
               color: "var(--text-secondary)", cursor: "pointer",
-              transition: "all 0.15s ease",
+              transition: "all 0.18s ease",
+              boxShadow: "inset 0 1px 0 var(--glass-highlight)",
             }}
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
