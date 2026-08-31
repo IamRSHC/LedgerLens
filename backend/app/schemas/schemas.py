@@ -77,6 +77,10 @@ class ResolveRequest(BaseModel):
     resolution: str
     actor: str = "user"
 
+class FlagRequest(BaseModel):
+    reason: str = "Flagged for manual review"
+    actor: str = "user"
+
 class DashboardStats(BaseModel):
     total_records: int
     matched: int

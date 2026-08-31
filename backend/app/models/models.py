@@ -65,7 +65,7 @@ class ReconciliationResult(Base):
     bank_txn_id = Column(String, nullable=True)
     match_type = Column(String)    # exact / fuzzy / unmatched
     match_score = Column(Float, nullable=True)
-    status = Column(String)        # matched / exception / review
+    status = Column(String)        # matched / exception  (Step 1.1: "review" retired)
     amount_delta = Column(Float, nullable=True)
     date_delta_days = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

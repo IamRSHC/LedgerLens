@@ -67,31 +67,53 @@ def run_reconciliation(req: RunRequest, db: Session = Depends(get_db)):
     result = reconcile(orders, settlements, banks)
     stats  = result["stats"]
 
-    # Persist results
+    # Persist results (Step 1.1: only MATCHED result rows; former "review" items
+    # now flow through result["exceptions"] and are persisted below as exception rows.)
     result_rows = []
-    for m in result["matched"] + result["review"]:
+    for m in result["matched"]:
         result_rows.append({
             "run_id": run_id, "order_id": m.get("order_id"),
             "settlement_id": m.get("settlement_id"), "bank_txn_id": m.get("bank_txn_id"),
             "match_type": m.get("match_type"), "match_score": m.get("match_score"),
-            "status": "matched" if m in result["matched"] else "review",
+            "status": "matched",
             "amount_delta": m.get("amount_delta"), "date_delta_days": m.get("date_delta_days"),
         })
     repo.bulk_insert_results(db, result_rows)
 
-    # Create exceptions + run AI investigation
+    # Create exceptions + run AI investigation (Step 1.2 lifecycle:
+    # open → ai_investigating → auto_resolved OR manual_review).
+    # Step 1.3: every exception is now linked to its own ReconciliationResult
+    # row (status="exception"), so result → exception navigation is possible
+    # from either direction.
     for exc in result["exceptions"]:
+        exc_result = repo.insert_result(db, {
+            "run_id": run_id,
+            "order_id":        exc.get("order_id"),
+            "settlement_id":   exc.get("settlement_id"),
+            "bank_txn_id":     exc.get("bank_txn_id"),
+            "match_type":      exc.get("match_type") or "unmatched",
+            "match_score":     exc.get("match_score"),
+            "status":          "exception",
+            "amount_delta":    exc.get("amount_delta"),
+            "date_delta_days": exc.get("date_delta_days"),
+        })
+
         exc_id = f"EX-{uuid.uuid4().hex[:8].upper()}"
-        exc_obj = repo.create_exception(db, {
+        repo.create_exception(db, {
             "exception_id": exc_id, "run_id": run_id, "order_id": exc.get("order_id"),
             "exception_type": exc["exception_type"], "severity": exc["severity"],
-            "amount_delta": exc.get("amount_delta"), "status": "open",
-            "result_id": None,
+            "amount_delta": exc.get("amount_delta"), "status": repo.STATUS_OPEN,
+            "result_id": exc_result.id,
         })
         repo.log_action(db, run_id, "exception", exc_id, f"flagged:{exc['exception_type']}")
 
-        # Investigate
-        inv = investigate(exc, db)
+        # open → ai_investigating
+        repo.transition_exception(
+            db, exc_id, repo.STATUS_AI_INVESTIGATING,
+            actor="system", action="started_investigation",
+        )
+
+        inv  = investigate(exc, db)
         auto = should_auto_resolve(exc, inv)
         import json
         repo.save_investigation(db, {
@@ -101,9 +123,24 @@ def run_reconciliation(req: RunRequest, db: Session = Depends(get_db)):
             "evidence": json.dumps(inv.get("evidence",[])), "tool_calls": inv.get("tool_calls","[]"),
             "risk_level": inv.get("risk_level","high"), "auto_resolved": auto,
         })
+
+        # ai_investigating → auto_resolved  OR  ai_investigating → manual_review
+        conf = inv.get("confidence")
         if auto:
-            repo.resolve_exception(db, exc_id, "auto_resolved", inv["recommended_action"], "ai")
-            repo.log_action(db, run_id, "exception", exc_id, "auto_resolved", actor="ai")
+            repo.transition_exception(
+                db, exc_id, repo.STATUS_AUTO_RESOLVED,
+                actor="ai", resolution=inv.get("recommended_action"),
+                action="auto_resolved",
+                detail=f"confidence={conf}",
+            )
+        else:
+            repo.transition_exception(
+                db, exc_id, repo.STATUS_MANUAL_REVIEW,
+                actor="system",
+                resolution="Requires manual review — policy did not auto-resolve",
+                action="policy_manual_review",
+                detail=f"confidence={conf} risk={inv.get('risk_level')}",
+            )
 
     # Finalize run
     repo.update_run(db, run_id,
@@ -137,16 +174,20 @@ def dashboard_stats(db: Session = Depends(get_db)):
     run = runs[0]
     excs = repo.get_exceptions(db, run_id=run.run_id)
     exc_breakdown = {}; sev_breakdown = {"low":0,"warning":0,"critical":0}
-    auto_resolved = 0; pending = 0
+    auto_resolved = 0; manual_review = 0; pending = 0
     for e in excs:
         exc_breakdown[e.exception_type] = exc_breakdown.get(e.exception_type, 0) + 1
         sev_breakdown[e.severity] = sev_breakdown.get(e.severity, 0) + 1
-        if e.status == "auto_resolved": auto_resolved += 1
-        if e.status == "open":          pending += 1
+        if e.status == repo.STATUS_AUTO_RESOLVED: auto_resolved += 1
+        if e.status == repo.STATUS_MANUAL_REVIEW: manual_review += 1
+        # Anything not yet in a terminal state counts as pending human attention.
+        if e.status in (repo.STATUS_OPEN, repo.STATUS_AI_INVESTIGATING, repo.STATUS_MANUAL_REVIEW):
+            pending += 1
     return {
         "total_records": run.total_records, "matched": run.matched,
         "exceptions": run.exceptions, "match_rate": run.match_rate or 0,
         "amount_reconciled": run.amount_reconciled or 0,
-        "auto_resolved": auto_resolved, "pending_review": pending,
+        "auto_resolved": auto_resolved, "manual_review": manual_review,
+        "pending_review": pending,
         "exception_breakdown": exc_breakdown, "severity_breakdown": sev_breakdown,
     }

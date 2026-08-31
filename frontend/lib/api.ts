@@ -42,6 +42,7 @@ export const getExceptions      = (runId?: string)          => api.get<Exception
 export const getException       = (id: string)              => api.get<Exception>(`/api/exceptions/${id}`);
 export const investigateException = (id: string)            => api.post<Investigation>(`/api/exceptions/${id}/investigate`);
 export const resolveException   = (id: string, res: string) => api.post(`/api/exceptions/${id}/resolve`, { resolution: res, actor: "user" });
+export const flagException      = (id: string, reason?: string) => api.post(`/api/exceptions/${id}/flag`, { reason: reason ?? "Flagged for manual review", actor: "user" });
 export const getAuditLogs       = (runId?: string)          => api.get<AuditLog[]>("/api/audit", { params: { run_id: runId, limit: 200 } });
 export const getOrders          = ()                        => api.get("/api/transactions/orders?limit=200");
 export const getSettlements     = ()                        => api.get("/api/transactions/settlements?limit=200");

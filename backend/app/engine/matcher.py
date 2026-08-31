@@ -60,6 +60,13 @@ REVIEW_THRESHOLD      = 0.70
 
 def reconcile(orders: list, settlements: list, bank_txns: list) -> dict:
     """
+    Reconcile the three sources into two result-level buckets: MATCHED and EXCEPTION.
+
+    Anything that fails the auto-match confidence threshold — including records
+    that previously landed in a separate "review" bucket — becomes an exception
+    so it enters the controller/AI workflow. Match metadata (score, type,
+    date_delta_days) is preserved on the exception dict for downstream use.
+
     Args:
         orders:      list of normalized order dicts
         settlements: list of normalized settlement dicts
@@ -68,7 +75,6 @@ def reconcile(orders: list, settlements: list, bank_txns: list) -> dict:
     Returns:
         {
           "matched":    [...],
-          "review":     [...],
           "exceptions": [...],
           "stats": {...},
         }
@@ -78,7 +84,7 @@ def reconcile(orders: list, settlements: list, bank_txns: list) -> dict:
     settle_by_oid    = {s["order_id"]: s for s in settlements if s.get("order_id")}
     bank_by_utr      = {b["utr"]: b for b in bank_txns if b.get("utr")}
 
-    matched, review, exceptions = [], [], []
+    matched, exceptions = [], []
     used_settlements = set()
     used_banks       = set()
 
@@ -102,11 +108,19 @@ def reconcile(orders: list, settlements: list, bank_txns: list) -> dict:
         if score >= AUTO_MATCH_THRESHOLD:
             record["match_type"] = "exact" if (oid == settlement.get("order_id")) else "fuzzy"
             matched.append(record)
-        elif score >= REVIEW_THRESHOLD:
-            record["match_type"] = "fuzzy"
-            review.append(record)
         else:
-            exceptions.append(_exception(order, settlement, bank, _classify(order, settlement, bank, score)))
+            # Below auto-match confidence → exception so the controller can act.
+            exc_type = _classify(order, settlement, bank, score)
+            # Records in the old "review" band (REVIEW_THRESHOLD ≤ score < AUTO_MATCH_THRESHOLD)
+            # that don't fit any specific classifier bucket are surfaced as low-confidence
+            # matches rather than the generic "unclassified" label.
+            if exc_type == "unclassified" and score >= REVIEW_THRESHOLD:
+                exc_type = "low_confidence_match"
+            exc = _exception(order, settlement, bank, exc_type)
+            exc["match_score"]     = round(score, 4)
+            exc["match_type"]      = "fuzzy"
+            exc["date_delta_days"] = record.get("date_delta_days")
+            exceptions.append(exc)
 
     # ── Stage 2: Orphan settlements (unknown_transaction) ─────────────────────
     for s in settlements:
@@ -119,12 +133,11 @@ def reconcile(orders: list, settlements: list, bank_txns: list) -> dict:
     stats = {
         "total":      total,
         "matched":    n_match,
-        "review":     len(review),
         "exceptions": len(exceptions),
         "match_rate": round(n_match / total * 100, 2) if total else 0,
         "amount_reconciled": round(sum(r.get("order_amount",0) for r in matched), 2),
     }
-    return {"matched": matched, "review": review, "exceptions": exceptions, "stats": stats}
+    return {"matched": matched, "exceptions": exceptions, "stats": stats}
 
 
 def _result(order: dict, settlement: dict, bank: Optional[dict], score: float) -> dict:

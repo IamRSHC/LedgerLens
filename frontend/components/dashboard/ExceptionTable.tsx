@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Exception, Investigation, resolveException } from "@/lib/api";
+import { Exception, Investigation, resolveException, flagException } from "@/lib/api";
 import { excTypeLabel, fmtDate } from "@/lib/utils";
 import { CheckCircle, Flag, X, Search, Sparkles, ChevronRight, Shield, AlertTriangle, Circle } from "lucide-react";
 
@@ -155,7 +155,7 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
 
   async function doFlag() {
     setFlagging(true);
-    try { await resolveException(exc.exception_id, "Flagged for manual review"); onResolved(); }
+    try { await flagException(exc.exception_id); onResolved(); }
     finally { setFlagging(false); }
   }
 
@@ -304,8 +304,9 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
           </div>
         )}
 
-        {/* Actions */}
-        {exc.status === "open" ? (
+        {/* Actions — surface for exceptions still awaiting human action.
+            Flag button hidden when already in manual_review (idempotent state). */}
+        {(exc.status === "open" || exc.status === "manual_review") ? (
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={doResolve} disabled={resolving || flagging} className="btn-primary" style={{
               flex: 1, justifyContent: "center", padding: "12px 0",
@@ -317,13 +318,15 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
               <CheckCircle size={16} />
               {resolving ? "Resolving..." : "Mark Resolved"}
             </button>
-            <button onClick={doFlag} disabled={resolving || flagging} className="btn-ghost" style={{
-              padding: "12px 18px", color: "var(--danger)",
-              opacity: flagging ? 0.5 : 1,
-            }}>
-              <Flag size={14} />
-              {flagging ? "Flagging..." : "Flag for Review"}
-            </button>
+            {exc.status === "open" && (
+              <button onClick={doFlag} disabled={resolving || flagging} className="btn-ghost" style={{
+                padding: "12px 18px", color: "var(--danger)",
+                opacity: flagging ? 0.5 : 1,
+              }}>
+                <Flag size={14} />
+                {flagging ? "Flagging..." : "Flag for Review"}
+              </button>
+            )}
           </div>
         ) : (
           <div style={{
@@ -362,13 +365,15 @@ export default function ExceptionTable({ exceptions, onRefresh }: { exceptions: 
         </h2>
         {/* Segmented glass control */}
         <div className="segment-control">
-          {["all", "open", "auto_resolved", "resolved"].map(s => (
+          {["all", "open", "manual_review", "auto_resolved", "resolved"].map(s => (
             <button
               key={s}
               onClick={() => setFilter(s)}
               className={`segment-item ${filter === s ? "segment-item-active" : ""}`}
             >
-              {s === "auto_resolved" ? "Auto-Resolved" : s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === "auto_resolved" ? "Auto-Resolved"
+                : s === "manual_review" ? "Manual Review"
+                : s.charAt(0).toUpperCase() + s.slice(1)}
             </button>
           ))}
         </div>

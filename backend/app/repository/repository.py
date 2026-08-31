@@ -12,6 +12,85 @@ from app.models.models import (
 )
 
 
+# ── Exception lifecycle (Step 1.2) ─────────────────────────────────────────────
+# Single source of truth for exception status values and the transitions between
+# them. Callers (API + reconciliation) must go through transition_exception()
+# so every state change is validated and audited in one place.
+
+STATUS_OPEN             = "open"
+STATUS_AI_INVESTIGATING = "ai_investigating"
+STATUS_AUTO_RESOLVED    = "auto_resolved"
+STATUS_MANUAL_REVIEW    = "manual_review"
+STATUS_RESOLVED         = "resolved"
+
+TERMINAL_STATUSES = {STATUS_AUTO_RESOLVED, STATUS_RESOLVED}
+
+ALLOWED_TRANSITIONS = {
+    STATUS_OPEN:              {STATUS_AI_INVESTIGATING, STATUS_MANUAL_REVIEW, STATUS_RESOLVED},
+    STATUS_AI_INVESTIGATING:  {STATUS_AUTO_RESOLVED, STATUS_MANUAL_REVIEW, STATUS_OPEN},
+    STATUS_MANUAL_REVIEW:     {STATUS_RESOLVED},
+    STATUS_AUTO_RESOLVED:     set(),  # terminal
+    STATUS_RESOLVED:          set(),  # terminal
+}
+
+
+class InvalidTransition(Exception):
+    def __init__(self, exception_id: str, from_status: str, to_status: str):
+        self.exception_id = exception_id
+        self.from_status  = from_status
+        self.to_status    = to_status
+        super().__init__(
+            f"Invalid lifecycle transition for {exception_id}: "
+            f"{from_status!r} → {to_status!r}"
+        )
+
+
+def transition_exception(
+    db: Session,
+    exception_id: str,
+    to_status: str,
+    actor: str = "system",
+    resolution: Optional[str] = None,
+    detail: Optional[str] = None,
+    action: Optional[str] = None,
+) -> Exc:
+    """
+    Move an exception through its lifecycle atomically:
+      - validate the from→to transition against ALLOWED_TRANSITIONS
+      - update status / resolution / resolved_at
+      - emit one audit_log entry describing the transition
+
+    Idempotent when to_status == current status (returns the row unchanged, no
+    duplicate audit entry). Raises InvalidTransition for disallowed moves so the
+    caller can choose how to surface the error.
+    """
+    exc = db.query(Exc).filter(Exc.exception_id == exception_id).first()
+    if not exc:
+        return None
+    from_status = exc.status
+    if from_status == to_status:
+        return exc  # idempotent no-op
+    allowed = ALLOWED_TRANSITIONS.get(from_status, set())
+    if to_status not in allowed:
+        raise InvalidTransition(exception_id, from_status, to_status)
+
+    updates = {"status": to_status}
+    if resolution is not None:
+        updates["resolution"] = resolution
+    if to_status in TERMINAL_STATUSES:
+        updates["resolved_at"] = datetime.utcnow()
+    db.query(Exc).filter(Exc.exception_id == exception_id).update(updates)
+    db.commit()
+
+    log_action(
+        db, exc.run_id, "exception", exception_id,
+        action or f"transition:{from_status}->{to_status}",
+        actor=actor, detail=detail,
+    )
+    db.refresh(exc)
+    return exc
+
+
 # ── Orders ─────────────────────────────────────────────────────────────────────
 def get_orders(db: Session, skip=0, limit=100) -> List[Order]:
     return db.query(Order).offset(skip).limit(limit).all()
@@ -78,8 +157,24 @@ def bulk_insert_results(db: Session, results: list):
     objs = [ReconciliationResult(**r) for r in results]
     db.bulk_save_objects(objs); db.commit()
 
+def insert_result(db: Session, r: dict) -> ReconciliationResult:
+    """
+    Insert a single ReconciliationResult row and return it with .id populated.
+
+    Used by the reconciliation batch loop when it needs the freshly-assigned
+    primary key so an Exception can be linked via result_id in the same
+    transaction. bulk_save_objects() does not populate defaults; this is the
+    single-row helper that does.
+    """
+    obj = ReconciliationResult(**r)
+    db.add(obj); db.commit(); db.refresh(obj)
+    return obj
+
 def get_results(db: Session, run_id: str) -> List[ReconciliationResult]:
     return db.query(ReconciliationResult).filter(ReconciliationResult.run_id == run_id).all()
+
+def get_result(db: Session, result_id: int) -> Optional[ReconciliationResult]:
+    return db.query(ReconciliationResult).filter(ReconciliationResult.id == result_id).first()
 
 
 # ── Exceptions ─────────────────────────────────────────────────────────────────
@@ -94,11 +189,6 @@ def get_exceptions(db: Session, run_id: Optional[str]=None, status: Optional[str
 
 def get_exception(db: Session, exception_id: str) -> Optional[Exc]:
     return db.query(Exc).filter(Exc.exception_id == exception_id).first()
-
-def resolve_exception(db: Session, exception_id: str, status: str, resolution: str, actor: str):
-    db.query(Exc).filter(Exc.exception_id == exception_id).update({
-        "status": status, "resolution": resolution, "resolved_at": datetime.utcnow()
-    }); db.commit()
 
 
 # ── AI investigations ──────────────────────────────────────────────────────────
