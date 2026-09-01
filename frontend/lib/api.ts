@@ -16,6 +16,12 @@ export interface DashboardStats {
   auto_resolved: number; pending_review: number;
   exception_breakdown: Record<string, number>;
   severity_breakdown: Record<string, number>;
+  // The run these KPIs describe. Present when the backend found a complete
+  // run to summarise; use for filtering the exception table so both panes
+  // show the same batch.
+  run_id?: string;
+  run_started_at?: string;
+  run_status?: string;
 }
 export interface Exception {
   exception_id: string; order_id: string | null; exception_type: string;

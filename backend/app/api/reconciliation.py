@@ -164,10 +164,24 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
 
 @router.get("/dashboard")
 def dashboard_stats(db: Session = Depends(get_db)):
-    runs = repo.get_runs(db, limit=1)
+    # Pick the latest COMPLETE run. Killed/incomplete "pending" batches — e.g.
+    # from a mid-flight timeout — would otherwise become the "latest run" and
+    # the dashboard would report zero counts while the exception table shows
+    # real rows. Scan a small window so a couple of pending runs at the top
+    # don't hide a good result underneath.
+    runs = repo.get_runs(db, limit=10)
     if not runs:
         return {"message": "No runs yet — POST /api/reconciliation/run to start"}
-    run = runs[0]
+    run = next((r for r in runs if r.status == "complete"), None)
+    if run is None:
+        # There are runs but none complete yet — surface that instead of zeros.
+        latest = runs[0]
+        return {
+            "message": f"Latest run {latest.run_id} is still {latest.status}; "
+                       "no complete run to summarise yet.",
+            "run_id": latest.run_id,
+            "run_status": latest.status,
+        }
     excs = repo.get_exceptions(db, run_id=run.run_id)
     exc_breakdown = {}; sev_breakdown = {"low":0,"warning":0,"critical":0}
     auto_resolved = 0; manual_review = 0; pending = 0
@@ -186,4 +200,9 @@ def dashboard_stats(db: Session = Depends(get_db)):
         "auto_resolved": auto_resolved, "manual_review": manual_review,
         "pending_review": pending,
         "exception_breakdown": exc_breakdown, "severity_breakdown": sev_breakdown,
+        # The run these KPIs describe. Frontend uses this to filter the
+        # exception table so table and KPIs always show the same batch.
+        "run_id":         run.run_id,
+        "run_started_at": run.started_at.isoformat() if run.started_at else None,
+        "run_status":     run.status,
     }

@@ -91,9 +91,19 @@ export default function Dashboard() {
       const [statsRes, excsRes, runsRes] = await Promise.all([
         getDashboard(), getExceptions(), getRuns(),
       ]);
-      setStats(statsRes.data as DashboardStats);
-      setExcs(excsRes.data as Exception[]);
-      setRun((runsRes.data as Run[])?.[0] ?? null);
+      const s   = statsRes.data as DashboardStats;
+      const all = excsRes.data as Exception[];
+      const rs  = runsRes.data as Run[];
+      setStats(s);
+      // Filter the exception table to the same run the KPIs describe so the
+      // two panes never disagree. When the backend didn't return a run_id
+      // (no complete run yet), fall through to the unfiltered list — the
+      // banner then already tells the user the situation.
+      setExcs(s?.run_id ? all.filter(e => e.run_id === s.run_id) : all);
+      // Prefer the run the dashboard actually summarised over the newest run
+      // (which may be an incomplete/killed batch we deliberately skipped).
+      const summarised = s?.run_id ? rs.find(r => r.run_id === s.run_id) : null;
+      setRun(summarised ?? rs?.[0] ?? null);
     } catch (e: any) {
       if (!e?.response) setOffline(true);
     } finally {
