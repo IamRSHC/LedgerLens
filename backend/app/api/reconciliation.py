@@ -123,8 +123,11 @@ def run_reconciliation(req: RunRequest, db: Session = Depends(get_db)):
             "exception_id": exc_id, "root_cause": inv.get("root_cause",""),
             "classification": inv.get("classification",""), "confidence": inv.get("confidence",0),
             "explanation": inv.get("explanation",""), "recommended_action": inv.get("recommended_action",""),
-            "evidence": json.dumps(inv.get("evidence",[])), "tool_calls": inv.get("tool_calls","[]"),
-            "risk_level": inv.get("risk_level","high"),
+            "evidence": json.dumps(inv.get("evidence", [])),
+            # Post-Step-3.1: InvestigationResult.tool_calls is a list; serialise to JSON here.
+            "tool_calls": json.dumps(inv.get("tool_calls", [])),
+            # Model-supplied risk_level (observability only — Step 3.2).
+            "risk_level": inv.get("risk_level") or "unknown",
             "auto_resolved": decision.eligible_for_auto_resolution,
         })
 
