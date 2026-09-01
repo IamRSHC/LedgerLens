@@ -7,7 +7,10 @@ from app.schemas.schemas import ReconciliationRunOut, RunRequest, DashboardStats
 from app.engine.normalizer import normalize_order, normalize_settlement, normalize_bank
 from app.engine.matcher import reconcile
 from app.agent.investigator import investigate
-from app.engine.classifier import should_auto_resolve
+# Step 2.1: policy + resolver replace the direct `should_auto_resolve` +
+# inline transition_exception calls. AI investigates, POLICY decides, RESOLVER executes.
+from app.controller.policy import evaluate_exception
+from app.controller.resolver import apply as apply_resolution
 import app.repository.repository as repo
 
 router = APIRouter(prefix="/api/reconciliation", tags=["reconciliation"])
@@ -113,34 +116,20 @@ def run_reconciliation(req: RunRequest, db: Session = Depends(get_db)):
             actor="system", action="started_investigation",
         )
 
-        inv  = investigate(exc, db)
-        auto = should_auto_resolve(exc, inv)
+        inv      = investigate(exc, db)
+        decision = evaluate_exception(exc, inv)
         import json
         repo.save_investigation(db, {
             "exception_id": exc_id, "root_cause": inv.get("root_cause",""),
             "classification": inv.get("classification",""), "confidence": inv.get("confidence",0),
             "explanation": inv.get("explanation",""), "recommended_action": inv.get("recommended_action",""),
             "evidence": json.dumps(inv.get("evidence",[])), "tool_calls": inv.get("tool_calls","[]"),
-            "risk_level": inv.get("risk_level","high"), "auto_resolved": auto,
+            "risk_level": inv.get("risk_level","high"),
+            "auto_resolved": decision.eligible_for_auto_resolution,
         })
 
-        # ai_investigating → auto_resolved  OR  ai_investigating → manual_review
-        conf = inv.get("confidence")
-        if auto:
-            repo.transition_exception(
-                db, exc_id, repo.STATUS_AUTO_RESOLVED,
-                actor="ai", resolution=inv.get("recommended_action"),
-                action="auto_resolved",
-                detail=f"confidence={conf}",
-            )
-        else:
-            repo.transition_exception(
-                db, exc_id, repo.STATUS_MANUAL_REVIEW,
-                actor="system",
-                resolution="Requires manual review — policy did not auto-resolve",
-                action="policy_manual_review",
-                detail=f"confidence={conf} risk={inv.get('risk_level')}",
-            )
+        # ai_investigating → auto_resolved OR manual_review, executed by the resolver.
+        apply_resolution(db, exc_id, decision, inv)
 
     # Finalize run
     repo.update_run(db, run_id,
