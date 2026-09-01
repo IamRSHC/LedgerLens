@@ -83,9 +83,16 @@ class InvestigationResult(BaseModel):
     # Diagnostic / raw model-supplied risk. Observability ONLY — see class docstring.
     risk_level:         Optional[str]  = None
 
-    # Provenance — filled to distinguish live Groq output from a fallback stub
-    # so no report can ever call a fallback "AI success".
+    # ── Provenance (Step 7.2) ────────────────────────────────────────────────
+    # Filled to distinguish live Groq output from a fallback stub so no report
+    # can ever call a fallback "AI success".
     provider:           Optional[str]  = None   # "groq" | "fallback"
+    model:              Optional[str]  = None   # e.g. "llama-3.3-70b-versatile" | "fallback-rule-engine"
+    fallback_reason:    Optional[str]  = None   # populated only when provider="fallback":
+                                                # missing_api_key | authentication_error |
+                                                # rate_limit_exhausted | timeout | network_error |
+                                                # validation_failure | tool_budget_exhausted |
+                                                # max_rounds_reached | unknown_error
 
     # Diagnostic list of tool invocations the agent made during this
     # investigation. Loose typing since it's audit-only; serialised as JSON

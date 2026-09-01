@@ -129,6 +129,10 @@ def run_reconciliation(req: RunRequest, db: Session = Depends(get_db)):
             # Model-supplied risk_level (observability only — Step 3.2).
             "risk_level": inv.get("risk_level") or "unknown",
             "auto_resolved": decision.eligible_for_auto_resolution,
+            # Step 7.2 provenance columns — new for Milestone D.
+            "provider":        inv.get("provider"),
+            "model":           inv.get("model"),
+            "fallback_reason": inv.get("fallback_reason"),
         })
 
         # ai_investigating → auto_resolved OR manual_review, executed by the resolver.

@@ -101,8 +101,12 @@ class AIInvestigation(Base):
     recommended_action = Column(Text)
     evidence = Column(Text)      # JSON
     tool_calls = Column(Text)    # JSON
-    risk_level = Column(String)  # low / medium / high
+    risk_level = Column(String)  # low / medium / high (raw model view, observability only)
     auto_resolved = Column(Boolean, default=False)
+    # Step 7.2: provenance columns. Nullable so historical rows survive.
+    provider = Column(String, nullable=True)          # "groq" | "fallback"
+    model = Column(String, nullable=True)             # e.g. "llama-3.3-70b-versatile"
+    fallback_reason = Column(String, nullable=True)   # populated only when provider="fallback"
     investigated_at = Column(DateTime, default=datetime.utcnow)
     exception = relationship("Exception", back_populates="investigation")
 

@@ -1,5 +1,5 @@
 """
-AI Investigator (Milestone B + C).
+AI Investigator (Milestones B + C + D).
 
 Contract (Milestone B):
   INVESTIGATOR ONLY — never mutates DB, never calls resolver, never decides
@@ -10,17 +10,27 @@ Milestone C additions:
              START → UNDERSTAND_EXCEPTION → INVESTIGATE → TOOL_CALL → OBSERVE
              → (NEED_MORE_EVIDENCE? loops) → VALIDATE_RESULT → RETURN
   Step 5.2 — Per-run tool budgets:
-                MAX_ROUNDS               (LLM round cap, was already present)
+                MAX_ROUNDS               (LLM round cap)
                 MAX_TOTAL_TOOL_CALLS     (per-investigation ceiling)
                 MAX_IDENTICAL_TOOL_CALLS (max calls with the same tool+args)
-             Hitting any budget produces a "blocked" tool response so the
-             model can conclude with what it has; exhaustion falls back to
-             a schema-valid stub (`fallback_reason="tool_budget_exhausted"`
-             or `"max_rounds_reached"`).
-  Step 5.3 — Every tool call records structured metadata:
-                {tool, arguments, status, result_summary, started_at, duration_ms}
-             Persisted on InvestigationResult.tool_calls; the raw tool result
-             is sent to the model but NOT stored (no giant DB payloads).
+  Step 5.3 — Structured per-tool-call metadata.
+
+Milestone D additions:
+  Step 6.1 — Groq config values (model / rounds / max_tokens) now read from
+             `settings.*` so operators can override via env without editing
+             code. API key is env-only, never hard-coded, never logged.
+  Step 7.1 — Typed retry/backoff on Groq errors:
+                authentication_error   → no retry, immediate fallback
+                rate_limit_exhausted   → up to 2 retries with exp backoff
+                timeout / network      → up to 2 retries with exp backoff
+                validation_failure     → in-loop re-prompt (already existed),
+                                          then fallback if still failing
+                unknown                → 1 retry, then fallback
+  Step 7.2 — Provenance on every InvestigationResult:
+                provider ∈ {"groq", "fallback"}
+                model    = settings.groq_model  |  "fallback-rule-engine"
+                fallback_reason = specific reason string (only when fallback)
+             Persisted to `ai_investigations.provider|model|fallback_reason`.
 """
 from __future__ import annotations
 import json
@@ -35,9 +45,10 @@ from app.agent.tools import TOOL_DEFINITIONS, TOOL_REGISTRY
 from app.schemas.investigation import InvestigationResult, Evidence
 
 
-# ── Model configuration ───────────────────────────────────────────────────────
-MODEL      = "llama-3.3-70b-versatile"
-MAX_TOKENS = 1000
+# ── Provenance constants (Step 7.2) ──────────────────────────────────────────
+PROVIDER_GROQ     = "groq"
+PROVIDER_FALLBACK = "fallback"
+MODEL_FALLBACK    = "fallback-rule-engine"
 
 
 # ── Step 5.1: agent-phase names (conceptual state flow) ──────────────────────
@@ -57,9 +68,84 @@ PHASES: Tuple[str, ...] = (
 
 
 # ── Step 5.2: loop guardrails ────────────────────────────────────────────────
-MAX_ROUNDS               = 5   # LLM turns per investigation
+# Note: MAX_ROUNDS / MAX_TOKENS are exposed as module constants for tests but
+# come from `settings.groq_max_rounds` / `settings.groq_max_tokens` (Step 6.1).
+MAX_ROUNDS               = settings.groq_max_rounds
+MAX_TOKENS               = settings.groq_max_tokens
 MAX_TOTAL_TOOL_CALLS     = 8   # per-investigation cap across all tools
 MAX_IDENTICAL_TOOL_CALLS = 2   # max invocations with the SAME tool+arguments
+
+# ── Step 7.1: Transient-error retry budget (LLM call level, NOT tool level) ──
+MAX_TRANSIENT_RETRIES = 2      # so total attempts per LLM call = 3
+MAX_UNKNOWN_RETRIES   = 1      # unknown errors get one retry only
+_RETRY_BASE_DELAY_SEC = 0.5    # exponential: 0.5s, 1.0s, 2.0s, ...
+
+
+class _LLMError(Exception):
+    """Typed LLM-layer error surfaced by `_call_llm` after retries are exhausted."""
+    def __init__(self, fallback_reason: str, detail: str = ""):
+        self.fallback_reason = fallback_reason
+        self.detail = detail
+        super().__init__(f"{fallback_reason}: {detail}"[:200])
+
+
+def _classify_llm_error(e: Exception) -> str:
+    """Map a Groq/SDK/network exception to one of:
+    'auth' | 'rate_limit' | 'timeout' | 'network' | 'unknown'.
+    Duck-typed on class name + message so mocks in tests classify correctly.
+    """
+    name = type(e).__name__.lower()
+    if "authentic" in name:                           return "auth"
+    if "ratelimit" in name or "rate_limit" in name:   return "rate_limit"
+    if "timeout"   in name:                           return "timeout"
+    if "connection" in name or "network" in name:     return "network"
+    msg = str(e).lower()
+    if "invalid api key" in msg or "unauthorized" in msg or "401" in msg: return "auth"
+    if "rate" in msg and "limit" in msg:              return "rate_limit"
+    if "429" in msg:                                  return "rate_limit"
+    if "timeout" in msg or "timed out" in msg:        return "timeout"
+    if "connection" in msg or "network" in msg or "connect" in msg: return "network"
+    return "unknown"
+
+
+_RETRY_REASON_MAP = {
+    "auth":       "authentication_error",     # no retry
+    "rate_limit": "rate_limit_exhausted",
+    "timeout":    "timeout",
+    "network":    "network_error",
+    "unknown":    "unknown_error",
+}
+
+
+def _call_llm(client, **kwargs):
+    """
+    Wrap `client.chat.completions.create` with typed retries + backoff (Step 7.1).
+
+    Retry policy:
+      auth       — never retry (raises immediately with fallback_reason="authentication_error").
+      rate_limit — MAX_TRANSIENT_RETRIES with exp backoff, then raise "rate_limit_exhausted".
+      timeout    — MAX_TRANSIENT_RETRIES with exp backoff, then raise "timeout".
+      network    — MAX_TRANSIENT_RETRIES with exp backoff, then raise "network_error".
+      unknown    — MAX_UNKNOWN_RETRIES with exp backoff, then raise "unknown_error".
+
+    Never sleeps more than `_RETRY_BASE_DELAY_SEC * 2^MAX_TRANSIENT_RETRIES`.
+    Never masks the root error — the caught exception's message is truncated
+    into `_LLMError.detail`, which the caller records as fallback_reason.
+    """
+    max_for_kind = {"auth": 0, "unknown": MAX_UNKNOWN_RETRIES}
+    default_max  = MAX_TRANSIENT_RETRIES
+    attempt = 0
+    while True:
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as e:
+            kind = _classify_llm_error(e)
+            limit = max_for_kind.get(kind, default_max)
+            if attempt < limit:
+                time.sleep(_RETRY_BASE_DELAY_SEC * (2 ** attempt))
+                attempt += 1
+                continue
+            raise _LLMError(_RETRY_REASON_MAP[kind], str(e)) from e
 
 
 # ── System prompt (Step 3.3 + tools introduced by Step 4.2/4.3) ──────────────
@@ -234,12 +320,18 @@ def _stub_investigation(
     *,
     fallback_reason: Optional[str] = None,
 ) -> InvestigationResult:
+    """
+    Rule-based stub. Step 7.2 provenance: always identifies as
+    provider="fallback", model="fallback-rule-engine", with the specific
+    `fallback_reason` recorded so downstream code and audits can never
+    mistake this for a live Groq investigation.
+    """
     exc_type = exception.get("exception_type", "unknown")
     delta    = abs(exception.get("amount_delta") or 0)
     root_cause, classification, confidence = _STUB_TABLE.get(
         exc_type, ("Unknown issue", "unknown", 0.50)
     )
-    tail = f" (fallback: {fallback_reason})" if fallback_reason else ""
+    tail = f" (fallback_reason: {fallback_reason})" if fallback_reason else ""
     return InvestigationResult(
         root_cause=root_cause,
         classification=classification,
@@ -256,7 +348,9 @@ def _stub_investigation(
                      description="Absolute order↔settlement gross discrepancy"),
         ],
         risk_level=None,
-        provider="fallback",
+        provider=PROVIDER_FALLBACK,
+        model=MODEL_FALLBACK,
+        fallback_reason=fallback_reason,
         tool_calls=[],
     )
 
@@ -351,13 +445,18 @@ def _run_agent(client, exception: Dict[str, Any], db: Session) -> InvestigationR
     total_tool_calls_ref: List[int]         = [0]
 
     # ── PHASE_INVESTIGATE (rounds loop) ──────────────────────────────────────
-    for _round in range(MAX_ROUNDS):
-        response = client.chat.completions.create(
-            model=MODEL,
+    for _round in range(settings.groq_max_rounds):
+        # Step 7.1: `_call_llm` performs typed retries for rate_limit/timeout/
+        # network/unknown; auth errors raise immediately. On final failure it
+        # raises `_LLMError(fallback_reason=…)` which the outer caller maps
+        # to a schema-valid stub.
+        response = _call_llm(
+            client,
+            model=settings.groq_model,
             messages=[{"role": "system", "content": SYSTEM_PROMPT}] + messages,
             tools=TOOL_DEFINITIONS,
             tool_choice="auto",
-            max_tokens=MAX_TOKENS,
+            max_tokens=settings.groq_max_tokens,
         )
         msg = response.choices[0].message
 
@@ -408,7 +507,10 @@ def _run_agent(client, exception: Dict[str, Any], db: Session) -> InvestigationR
             continue
 
         # ── PHASE_RETURN ─────────────────────────────────────────────────────
-        result.provider = "groq"
+        # Step 7.2: full provenance on the live path.
+        result.provider = PROVIDER_GROQ
+        result.model = settings.groq_model
+        result.fallback_reason = None
         result.tool_calls = tool_calls_log
         return result
 
@@ -428,18 +530,36 @@ def investigate(exception: Dict[str, Any], db: Session) -> Dict[str, Any]:
     """
     Investigate an exception. Returns a validated InvestigationResult as a
     dict (model_dump). Never raises — every failure route funnels to a
-    schema-valid fallback stub tagged `provider="fallback"`.
+    schema-valid fallback stub tagged `provider="fallback"` with a specific
+    `fallback_reason`.
+
+    Step 7.1/7.2 outer error mapping:
+      no key present               → fallback_reason="missing_api_key"
+      Groq SDK import error        → fallback_reason="groq_sdk_unavailable"
+      _LLMError (from _call_llm)   → fallback_reason=e.fallback_reason
+                                      ∈ {authentication_error, rate_limit_exhausted,
+                                         timeout, network_error, unknown_error}
+      any other unhandled error    → fallback_reason="unknown_error"
     """
     if not settings.groq_api_key:
-        return _stub_investigation(exception, fallback_reason="no_api_key").model_dump()
+        return _stub_investigation(exception, fallback_reason="missing_api_key").model_dump()
 
     try:
         from groq import Groq
+    except ImportError:
+        return _stub_investigation(exception, fallback_reason="groq_sdk_unavailable").model_dump()
+
+    try:
         client = Groq(api_key=settings.groq_api_key)
         result = _run_agent(client, exception, db)
-    except Exception as e:
-        result = _stub_investigation(
-            exception, fallback_reason=f"provider_error:{e!s}"[:200]
-        )
+    except _LLMError as e:
+        # Typed error from _call_llm — reason is already a canonical string.
+        result = _stub_investigation(exception, fallback_reason=e.fallback_reason)
+    except Exception:
+        # Catch-all safety net — should be rare because _call_llm already
+        # taxonomised known SDK errors. We deliberately DO NOT leak the raw
+        # exception string here (it may contain provider URLs, request IDs,
+        # or other operational detail); the reason is generic.
+        result = _stub_investigation(exception, fallback_reason="unknown_error")
 
     return result.model_dump()
