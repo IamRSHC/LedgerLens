@@ -8,7 +8,7 @@ never has to re-derive it.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 DecisionAction = Literal["auto_resolve", "manual_review"]
 
@@ -16,6 +16,7 @@ DecisionAction = Literal["auto_resolve", "manual_review"]
 @dataclass
 class PolicyDecision:
     # Deterministic risk classification from the policy engine.
+    # AUTHORITATIVE — this is what gates auto-resolution (Step 2.2).
     # Values: "low" | "medium" | "high".
     risk_level: str
 
@@ -33,3 +34,8 @@ class PolicyDecision:
     # Structured list of the specific rules that blocked auto-resolution
     # (empty when eligible). Useful for audit detail and future UI.
     blockers: List[str] = field(default_factory=list)
+
+    # Step 2.2: the model's OWN risk_level as supplied by the investigation
+    # (LLM or stub). Preserved for observability + audit only — never used
+    # to decide anything. Compare with `risk_level` to spot LLM/policy drift.
+    model_risk: Optional[str] = None

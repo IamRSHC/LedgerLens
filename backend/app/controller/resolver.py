@@ -41,7 +41,7 @@ def apply(
             actor="ai",
             resolution=investigation.get("recommended_action"),
             action="auto_resolved",
-            detail=f"confidence={conf} risk={decision.risk_level}",
+            detail=f"confidence={conf} policy_risk={decision.risk_level} model_risk={decision.model_risk}",
         )
 
     blockers_str = ",".join(decision.blockers) if decision.blockers else "none"
@@ -50,5 +50,5 @@ def apply(
         actor="system",
         resolution="Requires manual review — policy did not auto-resolve",
         action="policy_manual_review",
-        detail=f"confidence={conf} risk={decision.risk_level} blockers={blockers_str}",
+        detail=f"confidence={conf} policy_risk={decision.risk_level} model_risk={decision.model_risk} blockers={blockers_str}",
     )
