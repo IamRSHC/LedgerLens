@@ -81,8 +81,28 @@ def reconcile(orders: list, settlements: list, bank_txns: list) -> dict:
     """
     # Index by UTR for O(1) lookups
     settle_by_utr    = {s["utr"]: s for s in settlements if s.get("utr")}
-    settle_by_oid    = {s["order_id"]: s for s in settlements if s.get("order_id")}
     bank_by_utr      = {b["utr"]: b for b in bank_txns if b.get("utr")}
+
+    # Step 1.4: when multiple settlements share the same order_id (the
+    # duplicate-anomaly shape), prefer the EARLIEST-settled one as the
+    # "original" that wins Stage 1. Duplicates (settled later) then fall
+    # through to Stage 2 and are classified as `duplicate` explicitly.
+    settle_by_oid: dict = {}
+    for s in settlements:
+        oid = s.get("order_id")
+        if not oid:
+            continue
+        existing = settle_by_oid.get(oid)
+        if existing is None:
+            settle_by_oid[oid] = s
+            continue
+        s_dt = s.get("settled_at")
+        e_dt = existing.get("settled_at")
+        if s_dt and e_dt and s_dt < e_dt:
+            settle_by_oid[oid] = s
+
+    # Index orders for Stage 2 duplicate detection.
+    orders_by_id = {o["order_id"]: o for o in orders}
 
     matched, exceptions = [], []
     used_settlements = set()
@@ -122,12 +142,29 @@ def reconcile(orders: list, settlements: list, bank_txns: list) -> dict:
             exc["date_delta_days"] = record.get("date_delta_days")
             exceptions.append(exc)
 
-    # ── Stage 2: Orphan settlements (unknown_transaction) ─────────────────────
+    # ── Stage 2: Orphan settlements ────────────────────────────────────────────
+    # A settlement not consumed by Stage 1 is either:
+    #   • duplicate           — its order_id references a real order (that order
+    #                           was already reconciled via a different settlement);
+    #   • unknown_transaction — no matching order at all.
+    # This is deterministic: it uses only stable evidence already in the record
+    # (order_id + orders_by_id membership). No LLM involved.
+    orphan_settlements = 0
     for s in settlements:
-        if s["settlement_id"] not in used_settlements:
-            exceptions.append(_exception(None, s, bank_by_utr.get(s.get("utr","")), "unknown_transaction"))
+        if s["settlement_id"] in used_settlements:
+            continue
+        orphan_settlements += 1
+        bank = bank_by_utr.get(s.get("utr", ""))
+        oid  = s.get("order_id")
+        if oid and oid in orders_by_id:
+            exceptions.append(_exception(orders_by_id[oid], s, bank, "duplicate"))
+        else:
+            exceptions.append(_exception(None, s, bank, "unknown_transaction"))
 
-    total   = len(orders) + len([s for s in settlements if not s.get("order_id")])
+    # `total` now counts every distinct reconciliation-target entity:
+    # each order + each orphan settlement (both duplicates and unknowns).
+    # This makes matched + exceptions == total.
+    total   = len(orders) + orphan_settlements
     n_match = len(matched)
 
     stats = {
