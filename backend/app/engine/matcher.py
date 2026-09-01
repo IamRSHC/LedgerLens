@@ -117,16 +117,39 @@ def reconcile(orders: list, settlements: list, bank_txns: list) -> dict:
             exceptions.append(_exception(order, None, None, "missing_settlement"))
             continue
 
-        bank = bank_by_utr.get(settlement["utr"])
-        score = match_score(order, settlement, bank)
-
+        # Consume the settlement regardless of the bank leg outcome, so Stage 2
+        # doesn't re-flag it as an orphan.
         used_settlements.add(settlement["settlement_id"])
-        if bank: used_banks.add(bank["bank_txn_id"])
 
+        bank = bank_by_utr.get(settlement["utr"])
+
+        # Step 1.5: a settlement with no corresponding bank transaction is a
+        # HARD exception — the money leg was never verified. This must fire
+        # before the auto-match threshold, otherwise a clean order↔settlement
+        # pair scores ~0.95 on order/date/ref alone and would be silently
+        # classified as matched even though the bank leg is missing.
+        # NOTE: this fires only when the bank record is genuinely absent, not
+        # when it exists with a different amount or date — those still go
+        # through scoring and land in amount_mismatch / date_mismatch etc.
+        if bank is None:
+            exceptions.append(_exception(order, settlement, None, "missing_bank_record"))
+            continue
+
+        used_banks.add(bank["bank_txn_id"])
+        score = match_score(order, settlement, bank)
         record = _result(order, settlement, bank, score)
 
         if score >= AUTO_MATCH_THRESHOLD:
-            record["match_type"] = "exact" if (oid == settlement.get("order_id")) else "fuzzy"
+            # Step 1.6: `exact` iff every scoring dimension hit its top bucket
+            # — amounts identical, dates ≤ 1 day apart, reference/UTR identical,
+            # bank amount identical. A single component dropping to its next
+            # tier (e.g. bank amount off by <1 %) already pulls the score
+            # below 1.0, so a `score >= 0.9999` check is a robust float-safe
+            # equivalent to "all four components == 1.0". Any matched result
+            # that leaned on a tolerance band is `fuzzy`. The old rule
+            # (`exact` iff order_ids equal) called date-drifted / small-delta
+            # matches "exact" even when they clearly weren't.
+            record["match_type"] = "exact" if score >= 0.9999 else "fuzzy"
             matched.append(record)
         else:
             # Below auto-match confidence → exception so the controller can act.
@@ -222,7 +245,9 @@ def _exception(order, settlement, bank, exc_type: str) -> dict:
 
 def _severity(exc_type: str, delta: Optional[float]) -> str:
     if exc_type in ("unknown_transaction", "duplicate"): return "critical"
-    if exc_type == "missing_settlement": return "warning"
+    # "Missing leg" family — a settlement without a bank counterpart is as
+    # serious as an order without a settlement (money leg never verified).
+    if exc_type in ("missing_settlement", "missing_bank_record"): return "warning"
     if exc_type == "amount_mismatch" and delta and abs(delta) > 5000: return "critical"
     if exc_type == "amount_mismatch": return "warning"
     return "low"
