@@ -79,7 +79,10 @@ function ResolutionPolicy({ inv }: { inv: Investigation }) {
   const confPct = (inv.confidence * 100).toFixed(0);
   const riskColor = inv.risk_level === "high" ? "var(--danger)"
     : inv.risk_level === "medium" ? "var(--warning)" : "var(--success)";
-  const eligible = inv.confidence >= 0.8 && inv.risk_level !== "high";
+  // Step 1.7: eligibility comes from the backend's authoritative decision.
+  // Do NOT recompute the threshold here — the backend's classifier is the
+  // single source of truth and this boolean already reflects it.
+  const eligible = inv.auto_resolved;
 
   return (
     <div style={{
@@ -93,7 +96,7 @@ function ResolutionPolicy({ inv }: { inv: Investigation }) {
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>AI confidence</span>
           <p style={{
             fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 18, marginTop: 2,
-            color: inv.confidence >= 0.8 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
+            color: inv.confidence >= 0.85 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
           }}>
             {confPct}%
           </p>
@@ -115,7 +118,7 @@ function ResolutionPolicy({ inv }: { inv: Investigation }) {
       }}>
         <div style={{
           height: "100%", borderRadius: 2, width: `${inv.confidence * 100}%`,
-          background: inv.confidence >= 0.8 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
+          background: inv.confidence >= 0.85 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
           transition: "width 0.5s ease",
         }} />
       </div>
@@ -241,7 +244,7 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
               <div style={{
                 display: "flex", alignItems: "center", gap: 6,
                 fontSize: 12, fontWeight: 600,
-                color: inv.confidence >= 0.8 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
+                color: inv.confidence >= 0.85 ? "var(--success)" : inv.confidence >= 0.5 ? "var(--warning)" : "var(--danger)",
               }}>
                 <Shield size={13} />
                 {(inv.confidence * 100).toFixed(0)}%
