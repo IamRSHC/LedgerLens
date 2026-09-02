@@ -1,2 +1,28 @@
+# Root .gitignore — defensive top-level rules.
+# backend/.gitignore and frontend/.gitignore already scope their own
+# ignores (venv, node_modules, .next, .env, *.db, data/generated). These
+# top-level entries are the safety net so a `git add .` from the repo root
+# cannot accidentally commit a secret file, editor state, or an OS artefact.
+
 .DS_Store
+Thumbs.db
 *.log
+
+# Secrets — .env.example is tracked; real .env must never be committed.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Local dev database (contains investigation, audit, and run rows)
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Python bytecode caches (venv is ignored by backend/.gitignore)
+__pycache__/
+*.pyc

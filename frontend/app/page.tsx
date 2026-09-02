@@ -8,11 +8,14 @@ import {
   Sun, Moon, CheckCircle, Clock, AlertTriangle, Shield,
 } from "lucide-react";
 
+// Values come from Milestone 6 evaluation on the seed=42 dataset — see
+// backend/scripts/evaluate_engine.py and test_failure_modes.py. Do NOT change
+// them without regenerating the metrics they cite.
 const STATS = [
-  { value: "94.7%", label: "Auto match rate", Icon: CheckCircle },
-  { value: "~2s",   label: "Per 1,000 records", Icon: Clock },
+  { value: "93%",   label: "Engine classification accuracy", Icon: CheckCircle },
+  { value: "100%",  label: "Anomaly precision (0 false positives)", Icon: Shield },
   { value: "7",     label: "Exception types", Icon: AlertTriangle },
-  { value: "100%",  label: "Auditable", Icon: Shield },
+  { value: "22/22", label: "Failure-mode tests pass", Icon: Clock },
 ];
 
 export default function Landing() {
@@ -110,8 +113,8 @@ export default function Landing() {
         fontSize: 14, textAlign: "center", maxWidth: 480,
         color: "var(--text-muted)", lineHeight: 1.7, marginBottom: 48,
       }}>
-        Deterministic reconciliation engine paired with Groq LLaMA AI investigation.
-        Every exception investigated, every decision audited.
+        Deterministic reconciliation engine paired with a Groq-backed AI investigator.
+        Every exception investigated, every decision made by deterministic policy, every step audited.
       </p>
 
       {/* Stat strip — glass surface */}
