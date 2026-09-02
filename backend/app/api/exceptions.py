@@ -55,8 +55,14 @@ def reinvestigate(exception_id: str, db: Session=Depends(get_db)):
     inv = investigate(exc_dict, db)
     existing = repo.get_investigation(db, exception_id)
     if not existing:
+        # investigate() returns tool_calls as List[Dict] (per InvestigationResult).
+        # ai_investigations.tool_calls is a JSON-in-Text column and consumers
+        # (frontend, evaluator) call JSON.parse on it. If the value is already a
+        # string (defensive), pass it through untouched; otherwise json.dumps it.
+        tc_raw = inv.get("tool_calls", [])
+        tool_calls_str = tc_raw if isinstance(tc_raw, str) else json.dumps(tc_raw)
         repo.save_investigation(db, {"exception_id": exception_id, **inv,
-            "evidence": json.dumps(inv.get("evidence",[])), "tool_calls": inv.get("tool_calls","[]")})
+            "evidence": json.dumps(inv.get("evidence",[])), "tool_calls": tool_calls_str})
     return inv
 
 
