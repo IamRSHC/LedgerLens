@@ -50,12 +50,17 @@ export interface AuditLog {
 
 // ── API calls ──────────────────────────────────────────────────────────────────
 // Reconciliation batches now go through the live Groq investigator, which for
-// ~25 exceptions with tool-calling loops routinely runs 30 s – few minutes.
+// ~25 exceptions with tool-calling loops routinely runs 30 s – several minutes.
 // The default 30 s axios timeout would abort them client-side and surface as
 // "Backend not reachable — start the FastAPI server first." on the landing
-// page, even though the backend finishes fine. Give this ONE call a 10-minute
-// ceiling; other endpoints keep the 30 s default.
-export const runReconciliation  = ()                        => api.post<Run>("/api/reconciliation/run", {}, { timeout: 10 * 60 * 1000 });
+// page, even though the backend finishes fine.
+//
+// Milestone 9 observed a real live-Groq batch complete on the backend in 712.8 s
+// (~11 min 53 s), which exceeded the prior 10-minute client cap. Raise this
+// ONE call's ceiling to 20 minutes so a legitimate live batch has ~7 min of
+// headroom above the worst observed duration. All other endpoints keep the
+// 30 s default so a genuinely stuck read still surfaces quickly.
+export const runReconciliation  = ()                        => api.post<Run>("/api/reconciliation/run", {}, { timeout: 20 * 60 * 1000 });
 export const getRuns            = ()                        => api.get<Run[]>("/api/reconciliation/runs");
 export const getDashboard       = ()                        => api.get<DashboardStats>("/api/reconciliation/dashboard");
 export const getExceptions      = (runId?: string)          => api.get<Exception[]>("/api/exceptions", { params: { run_id: runId, limit: 200 } });
