@@ -110,15 +110,87 @@ def run_reconciliation(req: RunRequest, db: Session = Depends(get_db)):
         })
         repo.log_action(db, run_id, "exception", exc_id, f"flagged:{exc['exception_type']}")
 
-        # open → ai_investigating
+        # open → ai_investigating (audit action="started_investigation" preserved
+        # for backwards compat with earlier steps' consumers).
         repo.transition_exception(
             db, exc_id, repo.STATUS_AI_INVESTIGATING,
             actor="system", action="started_investigation",
         )
 
+        # ── Step 8.1 audit: investigation_started ─────────────────────────────
+        # Plan-named event. Detail carries the identifiers a reviewer needs to
+        # correlate this investigation with the underlying exception — no
+        # prompts, no chain-of-thought.
+        repo.log_action(
+            db, run_id, "exception", exc_id, "investigation_started",
+            actor="ai",
+            detail=f"type={exc['exception_type']} severity={exc['severity']} "
+                   f"order_id={exc.get('order_id')} amount_delta={exc.get('amount_delta')}",
+        )
+
         inv      = investigate(exc, db)
-        decision = evaluate_exception(exc, inv)
+
+        # ── Step 8.1 audit: tool_called + tool_completed per tool invocation ──
+        # Emitted from the reconciliation loop (NOT the agent) so the agent
+        # keeps its read-only stance. Uses only the Step-5.3 metadata already
+        # sanitised by the dispatcher (no raw payloads, no chain-of-thought).
         import json
+        for tc in inv.get("tool_calls", []) or []:
+            args_str = json.dumps(tc.get("arguments", {}), default=str)[:120]
+            repo.log_action(
+                db, run_id, "exception", exc_id, "tool_called",
+                actor="ai",
+                detail=f"tool={tc.get('tool')} args={args_str}",
+            )
+            repo.log_action(
+                db, run_id, "exception", exc_id, "tool_completed",
+                actor="ai",
+                detail=f"tool={tc.get('tool')} status={tc.get('status')} "
+                       f"duration_ms={tc.get('duration_ms')} "
+                       f"summary={(tc.get('result_summary') or '')[:100]}",
+            )
+
+        # ── Step 8.1 audit: investigation_completed / investigation_failed ────
+        # "completed" means a live-provider investigation returned a validated
+        # InvestigationResult with no fallback_reason. Anything else (any
+        # fallback path) is "failed" and carries the exact fallback_reason —
+        # never a prompt or a raw provider error string.
+        _provider = inv.get("provider") or "unknown"
+        _model    = inv.get("model") or "unknown"
+        _cls      = inv.get("classification") or "unknown"
+        _conf     = inv.get("confidence") if inv.get("confidence") is not None else 0.0
+        _fb       = inv.get("fallback_reason")
+        if _provider == "groq" and _fb is None:
+            repo.log_action(
+                db, run_id, "exception", exc_id, "investigation_completed",
+                actor="ai",
+                detail=f"provider=groq model={_model} classification={_cls} "
+                       f"confidence={_conf} tool_calls={len(inv.get('tool_calls', []) or [])}",
+            )
+        else:
+            repo.log_action(
+                db, run_id, "exception", exc_id, "investigation_failed",
+                actor="ai",
+                detail=f"provider={_provider} model={_model} "
+                       f"fallback_reason={_fb} classification={_cls} confidence={_conf}",
+            )
+
+        decision = evaluate_exception(exc, inv)
+
+        # ── Step 8.1 audit: policy_evaluated ──────────────────────────────────
+        # Records the deterministic policy verdict. Blockers list is truncated
+        # to keep audit rows bounded; full blockers persist on ai_investigations
+        # via the resolver's own audit `detail`.
+        _blockers = "; ".join(decision.blockers) if decision.blockers else "none"
+        repo.log_action(
+            db, run_id, "exception", exc_id, "policy_evaluated",
+            actor="system",
+            detail=f"decision={decision.decision} policy_risk={decision.risk_level} "
+                   f"model_risk={decision.model_risk or 'unknown'} "
+                   f"eligible={decision.eligible_for_auto_resolution} "
+                   f"blockers={_blockers[:200]}",
+        )
+
         repo.save_investigation(db, {
             "exception_id": exc_id, "root_cause": inv.get("root_cause",""),
             "classification": inv.get("classification",""), "confidence": inv.get("confidence",0),
@@ -136,7 +208,19 @@ def run_reconciliation(req: RunRequest, db: Session = Depends(get_db)):
         })
 
         # ai_investigating → auto_resolved OR manual_review, executed by the resolver.
+        # The resolver emits the transition-level audit ("auto_resolved" or
+        # "policy_manual_review") via transition_exception — those rows are
+        # preserved. The plan additionally names "manual_review_required" as
+        # the semantic event for the manual-review branch, so we emit it here
+        # so consumers can filter on either name.
         apply_resolution(db, exc_id, decision, inv)
+        if decision.decision == "manual_review":
+            repo.log_action(
+                db, run_id, "exception", exc_id, "manual_review_required",
+                actor="system",
+                detail=f"policy_risk={decision.risk_level} confidence={_conf} "
+                       f"blockers={_blockers[:200]}",
+            )
 
     # Finalize run
     repo.update_run(db, run_id,

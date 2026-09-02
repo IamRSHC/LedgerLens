@@ -192,8 +192,41 @@ def get_exception(db: Session, exception_id: str) -> Optional[Exc]:
 
 
 # ── AI investigations ──────────────────────────────────────────────────────────
+
+# Step 8.2: the exact set of columns callers may write. Anything else in the
+# input dict is silently dropped rather than raising a TypeError that would
+# otherwise abort the whole batch. Kept as a module-level constant so it's
+# grep-able and stays in lockstep with the model.
+_AI_INV_WRITABLE_COLS = {
+    "exception_id",
+    "root_cause",
+    "classification",
+    "confidence",
+    "explanation",
+    "recommended_action",
+    "evidence",
+    "tool_calls",
+    "risk_level",
+    "auto_resolved",
+    "provider",
+    "model",
+    "fallback_reason",
+}
+
+
 def save_investigation(db: Session, inv: dict) -> AIInvestigation:
-    obj = AIInvestigation(**inv); db.add(obj); db.commit(); db.refresh(obj); return obj
+    """
+    Persist one AIInvestigation row.
+
+    Step 8.2 hardening: the input dict is filtered against `_AI_INV_WRITABLE_COLS`
+    before construction. Unknown keys are silently dropped instead of raising
+    TypeError — a defensive posture so a future caller passing an extra field
+    doesn't crash a whole reconciliation batch. `id` and `investigated_at`
+    are populated by the DB (autoincrement + DateTime default) and must not
+    appear in `inv`.
+    """
+    clean = {k: v for k, v in inv.items() if k in _AI_INV_WRITABLE_COLS}
+    obj = AIInvestigation(**clean); db.add(obj); db.commit(); db.refresh(obj); return obj
 
 def get_investigation(db: Session, exception_id: str) -> Optional[AIInvestigation]:
     return db.query(AIInvestigation).filter(AIInvestigation.exception_id == exception_id).first()

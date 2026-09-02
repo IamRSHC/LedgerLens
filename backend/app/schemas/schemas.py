@@ -36,15 +36,33 @@ class ExceptionOut(BaseModel):
     class Config: from_attributes = True
 
 class InvestigationOut(BaseModel):
+    """
+    Typed API view of a persisted AIInvestigation row.
+
+    Step 8.2: the schema now surfaces the full 11-field investigation contract
+    the plan requires — including provider / model / fallback_reason (added
+    to the DB in Milestone D) and `investigated_at` (the persisted equivalent
+    of the plan's `created_at`).
+
+    All Milestone-D and pre-Milestone-D historical rows validate against this
+    schema: fields absent on older rows come back as `None` because their
+    columns are nullable.
+    """
     root_cause: str
     classification: str
     confidence: float
-    explanation: str
-    recommended_action: str
-    evidence: Optional[str]
-    tool_calls: Optional[str]
-    risk_level: str
+    explanation: Optional[str] = None
+    recommended_action: Optional[str] = None
+    evidence: Optional[str] = None          # JSON string of Evidence[] (Step 3.1)
+    tool_calls: Optional[str] = None        # JSON string of tool metadata (Step 5.3)
+    risk_level: Optional[str] = None        # raw model risk — observability only (Step 3.2)
     auto_resolved: bool
+    # ── Step 7.2 provenance (added in Milestone D; surfaced typed in Step 8.2) ──
+    provider: Optional[str] = None          # "groq" | "fallback"
+    model: Optional[str] = None             # e.g. "openai/gpt-oss-20b" | "fallback-rule-engine"
+    fallback_reason: Optional[str] = None   # populated only when provider="fallback"
+    # ── Timestamp (plan calls it created_at; column is investigated_at) ─────────
+    investigated_at: Optional[datetime] = None
     class Config: from_attributes = True
 
 class ReconciliationRunOut(BaseModel):
