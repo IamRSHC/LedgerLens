@@ -35,15 +35,21 @@ function StatusIndicator({ status }: { status: string }) {
   );
 }
 
-function ToolCallRow({ tool, result, isLast }: { tool: string; result: any; isLast: boolean }) {
-  const hasResult = result && typeof result === "object" && Object.keys(result).length > 0;
-  const completed = hasResult || result !== undefined;
-
-  const resultSummary = hasResult
-    ? Object.entries(result).slice(0, 1).map(([k, v]) =>
-        typeof v === "string" ? `${v.slice(0, 40)}${v.length > 40 ? "..." : ""}` : "Data retrieved"
-      )[0]
-    : "Completed";
+// Backend persists tool calls with Step-5.3 metadata:
+//   {tool, arguments, status: "success"|"error"|"blocked", result_summary, duration_ms, started_at}
+// The pre-Milestone-7 UI destructured {result} which never existed — every row
+// rendered the "Data retrieved" boilerplate. Read the real fields instead.
+function ToolCallRow({ call, isLast }: { call: any; isLast: boolean }) {
+  const status: string = call?.status || "unknown";
+  const isBlocked = status === "blocked";
+  const isError   = status === "error";
+  const isOk      = status === "success";
+  const summary   = call?.result_summary || (isBlocked ? "blocked by agent safety limit" : "no summary");
+  const dur       = call?.duration_ms;
+  const StatusIcon = isOk ? CheckCircle : isError || isBlocked ? AlertTriangle : Circle;
+  const iconColor  = isOk ? "var(--success)" : isError ? "var(--danger)" : isBlocked ? "var(--warning)" : "var(--accent)";
+  const badgeLabel = isOk ? "DONE" : isError ? "ERROR" : isBlocked ? "BLOCKED" : status.toUpperCase();
+  const badgeColor = iconColor;
 
   return (
     <div style={{
@@ -53,24 +59,25 @@ function ToolCallRow({ tool, result, isLast }: { tool: string; result: any; isLa
       border: "1px solid var(--glass-border)",
       marginBottom: isLast ? 0 : 6,
     }}>
-      {completed ? (
-        <CheckCircle size={14} style={{ color: "var(--success)", marginTop: 1, flexShrink: 0 }} />
-      ) : (
-        <Circle size={14} className="tool-running" style={{ color: "var(--accent)", marginTop: 1, flexShrink: 0 }} />
-      )}
-      <div style={{ flex: 1 }}>
+      <StatusIcon size={14} style={{ color: iconColor, marginTop: 1, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text)", fontSize: 12 }}>
-          {tool}()
+          {call?.tool || "unknown"}()
         </span>
-        <p style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>
-          {completed ? resultSummary : "Processing..."}
+        <p style={{
+          color: "var(--text-muted)", fontSize: 11, marginTop: 2,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {summary}
         </p>
       </div>
-      {completed && (
-        <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600, marginTop: 2, flexShrink: 0 }}>
-          DONE
-        </span>
-      )}
+      <span style={{
+        fontSize: 10, color: badgeColor, fontWeight: 600, marginTop: 2, flexShrink: 0,
+        display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2,
+      }}>
+        <span>{badgeLabel}</span>
+        {typeof dur === "number" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>{dur}ms</span>}
+      </span>
     </div>
   );
 }
@@ -145,9 +152,13 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
   const [resolving, setResolving] = useState(false);
   const [flagging, setFlagging] = useState(false);
   const inv: Investigation | undefined = exc.investigation;
-  let evidence: { label: string; value: string }[] = [];
+  // Backend Evidence shape (Step 3.1): {source, field, value, description?}.
+  // The pre-Milestone-7 UI destructured {label, value} which never matched, so
+  // every evidence row rendered blank. Read the real fields instead.
+  type EvidenceRow = { source: string; field: string; value: unknown; description?: string };
+  let evidence: EvidenceRow[] = [];
   try { evidence = inv?.evidence ? JSON.parse(inv.evidence) : []; } catch {}
-  let toolCalls: { tool: string; args: object; result: object }[] = [];
+  let toolCalls: any[] = [];
   try { toolCalls = inv?.tool_calls ? JSON.parse(inv.tool_calls) : []; } catch {}
 
   async function doResolve() {
@@ -251,6 +262,34 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
               </div>
             </div>
 
+            {/* Provenance chip — live-Groq vs fallback + model + fallback reason.
+                Kept minimal: one line, honest labelling so the demo never
+                misrepresents a fallback as an AI decision. */}
+            {(inv.provider || inv.model) && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                fontSize: 11, color: "var(--text-muted)",
+              }}>
+                <span className="badge" style={{
+                  color: inv.provider === "groq" ? "var(--success)" : "var(--warning)",
+                  borderColor: inv.provider === "groq"
+                    ? "rgba(16,185,129,0.30)" : "rgba(245,158,11,0.30)",
+                  background: inv.provider === "groq"
+                    ? "rgba(16,185,129,0.10)" : "rgba(245,158,11,0.10)",
+                }}>
+                  {inv.provider === "groq" ? "live · groq" : "fallback · rule engine"}
+                </span>
+                {inv.model && (
+                  <span className="font-mono" style={{ fontSize: 11 }}>{inv.model}</span>
+                )}
+                {inv.fallback_reason && (
+                  <span style={{ color: "var(--warning)" }}>
+                    reason: {inv.fallback_reason}
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Resolution Policy block */}
             <ResolutionPolicy inv={inv} />
 
@@ -263,25 +302,39 @@ function Drawer({ exc, onClose, onResolved }: { exc: Exception; onClose: () => v
             {toolCalls.length > 0 && (
               <div>
                 <p className="label-mono" style={{ marginBottom: 8 }}>Agent Tool Calls</p>
-                {toolCalls.map((t, i) => (
-                  <ToolCallRow key={i} tool={t.tool} result={t.result} isLast={i === toolCalls.length - 1} />
+                {toolCalls.map((c, i) => (
+                  <ToolCallRow key={i} call={c} isLast={i === toolCalls.length - 1} />
                 ))}
               </div>
             )}
 
-            {/* Evidence */}
+            {/* Evidence — labels come from the backend Evidence schema (source.field). */}
             {evidence.length > 0 && (
               <div>
                 <p className="label-mono" style={{ marginBottom: 8 }}>Evidence</p>
                 {evidence.map((e, i) => (
                   <div key={i} style={{
-                    display: "flex", justifyContent: "space-between",
-                    padding: "8px 0",
+                    display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+                    padding: "8px 0", gap: 12,
                     borderBottom: i < evidence.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
                     fontSize: 13,
                   }}>
-                    <span style={{ color: "var(--text-secondary)" }}>{e.label}</span>
-                    <span className="font-mono" style={{ fontWeight: 600, fontSize: 12 }}>{e.value}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ color: "var(--text-secondary)" }}>
+                        {e.source}.{e.field}
+                      </span>
+                      {e.description && (
+                        <p style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>
+                          {e.description}
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-mono" style={{
+                      fontWeight: 600, fontSize: 12, flexShrink: 0,
+                      maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {typeof e.value === "object" ? JSON.stringify(e.value) : String(e.value)}
+                    </span>
                   </div>
                 ))}
               </div>

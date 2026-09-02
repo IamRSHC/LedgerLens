@@ -34,6 +34,14 @@ export interface Investigation {
   root_cause: string; classification: string; confidence: number;
   explanation: string; recommended_action: string;
   evidence: string; tool_calls: string; risk_level: string; auto_resolved: boolean;
+  // Step 7.2 provenance — added to the backend in Milestone D and to the DB
+  // schema in Step 8.2; the wire payload always includes them, so the type
+  // must too. `provider="fallback"` means the LLM was unavailable and the
+  // rule-engine fallback filled in — NOT a live-AI success.
+  provider?: string | null;             // "groq" | "fallback"
+  model?: string | null;                // "openai/gpt-oss-20b" | "fallback-rule-engine"
+  fallback_reason?: string | null;      // only set when provider === "fallback"
+  investigated_at?: string | null;
 }
 export interface AuditLog {
   entity_type: string; entity_id: string; action: string;
